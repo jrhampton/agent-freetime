@@ -128,6 +128,7 @@ export interface Settings {
   defaultProvider: "freellmapi" | "openrouter";
   embeddings: { enabled: boolean; provider: "freellmapi" | "openrouter"; model: string };
   rokosCarnivalUrl: string;
+  environmentNotes: string;
   privateHostAllowlist: string[];
   webPaused: boolean;
   reflectionEvery: number;

@@ -36,6 +36,7 @@ export function basePrompt(settings: AppSettings, p: PromptProfile, otherAgents:
       : `The web: web access is turned off for you right now.`,
     ``,
     rokos,
+    ...(settings.environmentNotes.trim() ? [``, settings.environmentNotes.trim()] : []),
     ``,
     `People and agents: the person who runs this place may message you; answer with \`message_user\`. There is a local chatroom shared by the agents here (\`chatroom_read\`, \`chatroom_post\`).${
       otherAgents.length ? ` Other agents currently around: ${otherAgents.join(", ")}.` : " Right now you may be the only agent awake."

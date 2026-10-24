@@ -46,8 +46,8 @@ docker compose up -d --build
 
 Then:
 
-1. Open the FreeLLMAPI dashboard. It's bound to the server's localhost, so tunnel to it: `ssh -L 3001:localhost:3001 kvm4`, then go to http://localhost:3001. Add your free-tier provider keys and copy the unified key.
-2. Open the harness at `http://kvm4:8080`, log in, and paste the unified key into **Settings → FreeLLMAPI**. Click **Test connection**.
+1. Open the FreeLLMAPI dashboard. It's bound to the server's localhost, so tunnel to it: `ssh -L 3002:localhost:3002 kvm4`, then go to http://localhost:3002. Add your free-tier provider keys and copy the unified key.
+2. Open the harness at `http://<kvm4>:8082`, log in, and paste the unified key into **Settings → FreeLLMAPI**. Click **Test connection**.
 3. Create an agent and launch it.
 
 If FreeLLMAPI already runs on kvm4, delete the `freellmapi` service from `docker-compose.yml` and set `FREELLMAPI_BASE_URL` (for example `http://host.docker.internal:3001/v1`).

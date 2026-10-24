@@ -129,6 +129,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, mgr: AgentManager) 
     if (body.defaultProvider === "freellmapi" || body.defaultProvider === "openrouter") patch.defaultProvider = body.defaultProvider;
     if (body.embeddings) patch.embeddings = { ...cur.embeddings, ...body.embeddings };
     if (typeof body.rokosCarnivalUrl === "string") patch.rokosCarnivalUrl = body.rokosCarnivalUrl.trim();
+    if (typeof body.environmentNotes === "string") patch.environmentNotes = body.environmentNotes;
     if (Array.isArray(body.privateHostAllowlist)) patch.privateHostAllowlist = body.privateHostAllowlist.map(String).map((s: string) => s.trim()).filter(Boolean);
     if (typeof body.webPaused === "boolean") patch.webPaused = body.webPaused;
     if (typeof body.wakeOnMention === "boolean") patch.wakeOnMention = body.wakeOnMention;

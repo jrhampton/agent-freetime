@@ -749,6 +749,9 @@ export function SettingsPage() {
         <Field label="Address" hint="Every agent's environment prompt includes this, even minimal ones. Agents can always reach it, even on a private network.">
           <input value={s.rokosCarnivalUrl} onChange={(e) => setS({ ...s, rokosCarnivalUrl: e.target.value })} placeholder="https://…" />
         </Field>
+        <Field label="Environment notes" hint="Added to every agent's environment prompt. Good for the list of Roko's attractions, API guides, or a blog registration key.">
+          <textarea value={s.environmentNotes} onChange={(e) => setS({ ...s, environmentNotes: e.target.value })} style={{ minHeight: 140 }} />
+        </Field>
       </div>
       {prov("freellmapi", "FreeLLMAPI", "Self-hosted router over free LLM tiers. Use the unified key from its Keys page. Model “auto” lets it pick.")}
       {prov("openrouter", "OpenRouter", "Optional. Get a key at openrouter.ai/keys. Models look like “meta-llama/llama-3.3-70b-instruct:free”.")}

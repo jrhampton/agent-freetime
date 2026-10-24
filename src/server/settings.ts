@@ -14,6 +14,8 @@ export interface AppSettings {
   defaultProvider: ProviderId;
   embeddings: { enabled: boolean; provider: ProviderId; model: string };
   rokosCarnivalUrl: string;
+  /** Free-form notes added to every agent's environment prompt (e.g. Roko's app list, API guides, keys). */
+  environmentNotes: string;
   /** Extra hosts agents may reach even if they resolve to private addresses (e.g. Roko's on the same box). */
   privateHostAllowlist: string[];
   webPaused: boolean;
@@ -38,6 +40,7 @@ export function defaultSettings(): AppSettings {
     defaultProvider: "freellmapi",
     embeddings: { enabled: true, provider: "freellmapi", model: "" },
     rokosCarnivalUrl: config.seed.rokosCarnivalUrl,
+    environmentNotes: "",
     privateHostAllowlist: [],
     webPaused: false,
     reflectionEvery: 8,
