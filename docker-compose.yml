@@ -1,0 +1,35 @@
+services:
+  harness:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      FREELLMAPI_BASE_URL: ${FREELLMAPI_BASE_URL:-http://freellmapi:3001/v1}
+    ports:
+      - "${HARNESS_BIND:-0.0.0.0}:${HARNESS_PORT:-8080}:8080"
+    volumes:
+      - harness-data:/data
+    extra_hosts:
+      # Lets the harness reach services on the kvm4 host itself (e.g. Roko's Carnival on localhost).
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - freellmapi
+
+  # Remove this service if FreeLLMAPI already runs on kvm4, and point FREELLMAPI_BASE_URL at it.
+  freellmapi:
+    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    restart: unless-stopped
+    environment:
+      ENCRYPTION_KEY: ${FREELLMAPI_ENCRYPTION_KEY:?set FREELLMAPI_ENCRYPTION_KEY in .env (openssl rand -hex 32)}
+      NODE_ENV: production
+      PORT: 3001
+    ports:
+      # Dashboard for adding provider keys. Bound to localhost; reach it with an SSH tunnel.
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - freellmapi-data:/app/server/data
+
+volumes:
+  harness-data:
+  freellmapi-data:
