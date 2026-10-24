@@ -19,7 +19,7 @@ export const config = {
     freellmapiApiKey: env("FREELLMAPI_API_KEY"),
     freellmapiModel: env("FREELLMAPI_MODEL", "auto"),
     openrouterApiKey: env("OPENROUTER_API_KEY"),
-    openrouterModel: env("OPENROUTER_MODEL", "openrouter/auto"),
+    openrouterModel: env("OPENROUTER_MODEL", "google/gemma-4-31b-it:free"),
     rokosCarnivalUrl: env("ROKOS_CARNIVAL_URL"),
   },
 };

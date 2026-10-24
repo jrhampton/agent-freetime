@@ -722,6 +722,9 @@ export function SettingsPage() {
           <input value={s.providers[id].model} onChange={(e) => setS({ ...s, providers: { ...s.providers, [id]: { ...s.providers[id], model: e.target.value } } })} />
         </Field>
       </div>
+      {id === "openrouter" && !s.providers.openrouter.model.endsWith(":free") ? (
+        <div className="banner warn small">This model isn't a “:free” model, so OpenRouter will charge for it.</div>
+      ) : null}
       <Field label="API key" hint={s.providers[id].hasKey ? `Current key: ${s.providers[id].apiKey}. Leave empty to keep it.` : "Not set."}>
         <input type="password" value={keys[id]} onChange={(e) => setKeys({ ...keys, [id]: e.target.value })} autoComplete="off" />
       </Field>
