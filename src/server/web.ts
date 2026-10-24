@@ -15,7 +15,7 @@ export interface WebContext {
   blockDomains: string[];
 }
 
-const UA = "AgentFreeTime/0.1 (+https://github.com/jrhampton/agent-freetime; autonomous AI agent)";
+export const UA = "AgentFreeTime/0.1 (+https://github.com/jrhampton/agent-freetime; autonomous AI agent)";
 const MAX_BYTES = 2_000_000;
 
 function isPrivateIp(ip: string): boolean {
@@ -50,7 +50,7 @@ function rokosHost(settings: AppSettings): string | null {
 }
 
 /** Returns a reason string when the URL must not be fetched. */
-async function checkUrl(ctx: WebContext, url: URL): Promise<string | null> {
+export async function checkUrl(ctx: WebContext, url: URL): Promise<string | null> {
   if (!["http:", "https:"].includes(url.protocol)) return "only http and https URLs are allowed";
   if (ctx.settings.webPaused) return "web access is paused by the operator";
   if (!ctx.webEnabled) return "web access is disabled for this agent";
@@ -77,7 +77,7 @@ async function checkUrl(ctx: WebContext, url: URL): Promise<string | null> {
   return null;
 }
 
-function logRequest(ctx: WebContext, r: { tool: string; method: string; url: string; status?: number; bytes?: number; ms?: number; blocked?: boolean; error?: string }) {
+export function logRequest(ctx: WebContext, r: { tool: string; method: string; url: string; status?: number; bytes?: number; ms?: number; blocked?: boolean; error?: string }) {
   let domain = "";
   try {
     domain = new URL(r.url).hostname;

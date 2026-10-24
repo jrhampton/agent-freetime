@@ -51,6 +51,7 @@ export interface Profile {
   max_steps: number;
   min_rest_minutes: number;
   max_rest_minutes: number;
+  session_minutes: number;
   daily_token_budget: number;
   color: string;
   tick_count: number;

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   max_steps INTEGER NOT NULL DEFAULT 8,
   min_rest_minutes REAL NOT NULL DEFAULT 2,
   max_rest_minutes REAL NOT NULL DEFAULT 60,
+  session_minutes REAL NOT NULL DEFAULT 0,
   daily_token_budget INTEGER NOT NULL DEFAULT 200000,
   color TEXT NOT NULL DEFAULT '#7c5cff',
   autostart INTEGER NOT NULL DEFAULT 0,
@@ -146,7 +147,17 @@ export function openDb(file?: string): DB {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them to old databases. */
+function migrate(db: DB) {
+  const add = (table: string, column: string, def: string) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+  };
+  add("profiles", "session_minutes", "REAL NOT NULL DEFAULT 0");
 }
 
 /** SQLite datetime('now') strings are UTC without a zone marker. */

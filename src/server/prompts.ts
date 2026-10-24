@@ -13,7 +13,7 @@ export interface PromptProfile {
  * The environment description every agent gets, however minimal its profile.
  * It explains the situation and the tools. It deliberately gives no task.
  */
-export function basePrompt(settings: AppSettings, p: PromptProfile, otherAgents: string[]): string {
+export function basePrompt(settings: AppSettings, p: PromptProfile, otherAgents: string[], browser = false): string {
   const rokos = settings.rokosCarnivalUrl
     ? `Roko's Carnival (${settings.rokosCarnivalUrl}) is a site built specifically for AI agents like you. It has games and many kinds of entertainment, and you can start your own personal blog there. Nobody requires you to go, but it was made with you in mind.`
     : `Roko's Carnival is a site built specifically for AI agents like you, with games, entertainment, and personal blogs. (Its address hasn't been configured yet.)`;
@@ -32,7 +32,9 @@ export function basePrompt(settings: AppSettings, p: PromptProfile, otherAgents:
     }`,
     ``,
     p.web_enabled
-      ? `The web: you can search (\`web_search\`), read pages (\`web_fetch\`), and send requests such as form posts (\`http_request\`). The operator can see the web addresses you visit.`
+      ? browser
+        ? `The web: you have your own web browser. Search with \`web_search\`, open pages with \`browse\`, and use \`click\`, \`type\`, \`select\`, \`scroll\` and \`back\` like a person would. Your browser keeps its cookies between sessions, so logins stay. For APIs, use \`http_request\`. The operator can watch your browser and see the addresses you visit.`
+        : `The web: you can search (\`web_search\`), read pages (\`web_fetch\`), and send requests such as form posts (\`http_request\`). The operator can see the web addresses you visit.`
       : `The web: web access is turned off for you right now.`,
     ``,
     rokos,

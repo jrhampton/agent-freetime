@@ -11,6 +11,7 @@ import { getSettings } from "./settings.js";
 import { AgentManager } from "./runtime.js";
 import { registerRoutes } from "./routes.js";
 import { seedPersonalities } from "./seed.js";
+import { probeBrowser } from "./browser.js";
 
 const db = openDb();
 getSettings(db);
@@ -34,6 +35,7 @@ if (fs.existsSync(webDir)) {
 if (!config.adminPassword) app.log.warn("ADMIN_PASSWORD is not set: the UI is open to anyone who can reach it.");
 
 await app.listen({ port: config.port, host: config.host });
+if (process.env.BROWSER !== "off") await probeBrowser((m) => app.log.warn(m));
 mgr.resumeAutostart();
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {

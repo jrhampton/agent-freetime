@@ -86,6 +86,10 @@ export function EventItem({ e, profile, showAgent }: { e: EventRow; profile?: Pr
       title = <>↳ {d.name} result</>;
       body = open ? d.output : short(d.output, 300);
       break;
+    case "notification":
+      title = "Mentioned in the chatroom";
+      body = (d.lines ?? []).join("\n");
+      break;
     case "context":
       title = "Context given at wake-up";
       body = open ? `${d.system}\n\n---\n\n${d.context}` : null;
@@ -120,6 +124,11 @@ export function EventItem({ e, profile, showAgent }: { e: EventRow; profile?: Pr
       </div>
       <div>{title}</div>
       {body ? <pre>{body}</pre> : null}
+      {e.type === "tool_result" && d.screenshot && e.profile_id ? (
+        <a href={`/api/screens/${e.profile_id}/${d.screenshot}`} target="_blank" rel="noreferrer">
+          <img className="shot" src={`/api/screens/${e.profile_id}/${d.screenshot}`} alt="screenshot" loading="lazy" />
+        </a>
+      ) : null}
     </div>
   );
 }
@@ -366,6 +375,85 @@ export function WebTable({ profileId, profiles }: { profileId?: number; profiles
         </table>
         {!rows.length ? <div className="empty">No web activity yet.</div> : null}
       </div>
+    </div>
+  );
+}
+
+export interface Frame {
+  profileId: number;
+  image: string;
+  url: string;
+  title: string;
+  at: number;
+}
+
+let frameCache = new Map<number, Frame>();
+
+/** Latest browser frames for all agents, kept fresh from the websocket. */
+export function useFrames() {
+  const [frames, setFrames] = useState<Map<number, Frame>>(frameCache);
+  const [available, setAvailable] = useState(true);
+  useEffect(() => {
+    api.get<{ available: boolean; frames: Frame[] }>("/screens/latest").then((r) => {
+      setAvailable(r.available);
+      frameCache = new Map(r.frames.map((f) => [f.profileId, f]));
+      setFrames(frameCache);
+    });
+  }, []);
+  useLive((m) => {
+    if (m.channel !== "screen" || m.profileId == null) return;
+    const next = new Map(frameCache);
+    if (m.payload) next.set(m.profileId, m.payload);
+    else next.delete(m.profileId);
+    frameCache = next;
+    setFrames(next);
+  });
+  return { frames, available };
+}
+
+/** The last thing an agent did, for captions under a live browser. */
+function actionText(e: EventRow): string | null {
+  const d = e.data ?? {};
+  if (e.type === "thought") return `💭 ${d.content}`;
+  if (e.type === "tool_call") return `⚙️ ${d.name} ${JSON.stringify(d.args).slice(0, 120)}`;
+  if (e.type === "tick_end") return `😴 resting: ${d.note ?? ""}`;
+  return null;
+}
+
+export function useLastActions(profileIds: number[]) {
+  const [last, setLast] = useState<Map<number, string>>(new Map());
+  useEffect(() => {
+    api.get<EventRow[]>("/events?limit=300").then((rows) => {
+      const m = new Map<number, string>();
+      for (const e of rows) {
+        const t = actionText(e);
+        if (t && e.profile_id != null && !m.has(e.profile_id)) m.set(e.profile_id, t);
+      }
+      setLast((prev) => new Map([...m, ...prev]));
+    });
+  }, []);
+  useLive((m) => {
+    if (m.channel !== "event" || m.profileId == null || !profileIds.includes(m.profileId)) return;
+    const text = actionText(m.payload);
+    if (text) setLast((prev) => new Map(prev).set(m.profileId!, text));
+  });
+  return last;
+}
+
+export function BrowserScreen({ frame, profile, big }: { frame?: Frame; profile: Profile; big?: boolean }) {
+  return (
+    <div className={`screen ${big ? "big" : ""}`}>
+      <div className="screen-bar">
+        <span className={`dot s-${profile.state.status}`} />
+        <span className="mono screen-url" title={frame?.url}>
+          {frame?.url ?? "no page open"}
+        </span>
+      </div>
+      {frame ? (
+        <img src={`data:image/jpeg;base64,${frame.image}`} alt={`${profile.name}'s browser`} />
+      ) : (
+        <div className="screen-empty">{profile.state.status === "stopped" ? "Stopped" : "The browser opens when the agent first goes online."}</div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import "./styles.css";
 import { api } from "./api";
 import { startLive } from "./live";
 import { useProfiles } from "./components";
-import { AgentDetail, AgentEditor, Chatroom, Dashboard, Personalities, SettingsPage, SharedMemory, WebMonitor } from "./pages";
+import { AgentDetail, AgentEditor, Browsers, Chatroom, Dashboard, Personalities, SettingsPage, SharedMemory, WebMonitor } from "./pages";
 
 function useHash() {
   const [hash, setHash] = useState(location.hash || "#/");
@@ -18,6 +18,7 @@ function useHash() {
 
 const NAV = [
   ["#/", "🎪", "Dashboard"],
+  ["#/browsers", "🖥️", "Browsers"],
   ["#/chatroom", "💬", "Chatroom"],
   ["#/web", "🌐", "Web activity"],
   ["#/memory", "🧠", "Shared memory"],
@@ -53,6 +54,7 @@ function Shell() {
     const p = profiles.find((x) => x.id === Number(parts[1]));
     page = p ? <AgentDetail key={p.id} profile={p} profiles={profiles} tab={parts[2] ?? "activity"} reload={reload} /> : <div className="empty">Agent not found.</div>;
   } else if (parts[0] === "chatroom") page = <Chatroom profiles={profiles} />;
+  else if (parts[0] === "browsers") page = <Browsers profiles={profiles} />;
   else if (parts[0] === "web") page = <WebMonitor profiles={profiles} />;
   else if (parts[0] === "memory") page = <SharedMemory profiles={profiles} />;
   else if (parts[0] === "personalities") page = <Personalities />;

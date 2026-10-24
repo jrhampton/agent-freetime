@@ -4,6 +4,7 @@ import type { AppSettings } from "./settings.js";
 import { addMemory, recall, formatMemory } from "./memory.js";
 import { guardedFetch, htmlToText, webSearch, type WebContext } from "./web.js";
 import { bus } from "./bus.js";
+import { browserAvailable, browserFor } from "./browser.js";
 
 export interface ToolProfile {
   id: number;
@@ -28,6 +29,8 @@ export interface ToolContext {
 
 export interface ToolOutcome {
   output: string;
+  /** Screenshot file saved after a browser action, for the activity history. */
+  screenshot?: string;
   /** Set when the agent called rest: ends the session. */
   rest?: { minutes: number; note: string; importance: number };
 }
@@ -39,7 +42,24 @@ const fn = (name: string, description: string, properties: Record<string, unknow
 
 export function toolDefs(p: ToolProfile): ToolDef[] {
   const defs: ToolDef[] = [];
-  if (p.web_enabled) {
+  if (p.web_enabled && browserAvailable()) {
+    const el = { type: "integer", description: "Element number from the page's list of interactive elements" };
+    defs.push(
+      fn("web_search", "Search the web in your browser. Returns titles, URLs, and snippets.", { query: { type: "string" } }, ["query"]),
+      fn("browse", "Open a URL in your browser. Returns the page text and numbered interactive elements.", { url: { type: "string" } }, ["url"]),
+      fn("read_page", "Read the current page again, optionally from a character offset for long pages.", { offset: { type: "integer" } }),
+      fn("click", "Click an element on the current page by its number.", { element: el }, ["element"]),
+      fn(
+        "type",
+        "Type text into an input or textarea by its number. Set submit=true to press Enter afterwards.",
+        { element: el, text: { type: "string" }, submit: { type: "boolean" } },
+        ["element", "text"],
+      ),
+      fn("select", "Choose an option in a dropdown by its number.", { element: el, option: { type: "string" } }, ["element", "option"]),
+      fn("scroll", "Scroll the current page.", { direction: { type: "string", enum: ["down", "up"] } }, ["direction"]),
+      fn("back", "Go back to the previous page.", {}),
+    );
+  } else if (p.web_enabled) {
     defs.push(
       fn("web_search", "Search the web. Returns titles, URLs, and snippets.", { query: { type: "string" } }, ["query"]),
       fn(
@@ -51,6 +71,21 @@ export function toolDefs(p: ToolProfile): ToolDef[] {
       fn(
         "http_request",
         "Send an HTTP request, e.g. to submit a form or call an API. Body is sent as-is; set a Content-Type header such as application/json or application/x-www-form-urlencoded.",
+        {
+          method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+          url: { type: "string" },
+          headers: { type: "object", additionalProperties: { type: "string" } },
+          body: { type: "string" },
+        },
+        ["method", "url"],
+      ),
+    );
+  }
+  if (p.web_enabled && browserAvailable()) {
+    defs.push(
+      fn(
+        "http_request",
+        "Send a raw HTTP request (not in your browser), e.g. to call an API. Body is sent as-is; set a Content-Type header such as application/json.",
         {
           method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
           url: { type: "string" },
@@ -117,8 +152,66 @@ export function postChat(db: DB, sender: { type: "agent" | "user" | "system"; pr
   return row;
 }
 
+const BROWSER_TOOLS = new Set(["web_search", "browse", "read_page", "click", "type", "select", "scroll", "back"]);
+
+async function runBrowserTool(c: ToolContext, name: string, args: any): Promise<ToolOutcome> {
+  if (!c.profile.web_enabled) return { output: "Web access is disabled for you." };
+  const b = await browserFor(webCtx(c));
+  b.tool = name;
+  const el = Number(args.element);
+  try {
+    switch (name) {
+      case "web_search": {
+        await b.goto(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(String(args.query ?? ""))}`);
+        const results = await b.page.evaluate(() =>
+          Array.from(document.querySelectorAll(".result"))
+            .map((r) => {
+              const a = r.querySelector<HTMLAnchorElement>("a.result__a");
+              let url = a?.href ?? "";
+              try {
+                url = new URL(url).searchParams.get("uddg") ?? url;
+              } catch {}
+              return { title: a?.innerText.trim() ?? "", url, snippet: r.querySelector<HTMLElement>(".result__snippet")?.innerText.trim() ?? "" };
+            })
+            .filter((r) => r.title && !r.url.includes("duckduckgo.com/y.js"))
+            .slice(0, 8),
+        );
+        const shot = await b.snapshot();
+        if (!results.length) return { output: `No results parsed. The page says:\n${await b.describe(0, 2000)}`, screenshot: shot };
+        return { output: results.map((x, i) => `${i + 1}. ${x.title}\n   ${x.url}\n   ${x.snippet}`).join("\n"), screenshot: shot };
+      }
+      case "browse": {
+        const status = await b.goto(String(args.url ?? ""));
+        return { output: `Status ${status ?? "?"}: ${await b.describe()}`, screenshot: await b.snapshot() };
+      }
+      case "read_page":
+        return { output: await b.describe(Math.max(0, Number(args.offset) || 0)), screenshot: await b.snapshot() };
+      case "click":
+        await b.click(el);
+        return { output: await b.describe(), screenshot: await b.snapshot() };
+      case "type":
+        await b.type(el, String(args.text ?? ""), !!args.submit);
+        return { output: args.submit ? await b.describe() : `Typed into [${el}].`, screenshot: await b.snapshot() };
+      case "select":
+        await b.select(el, String(args.option ?? ""));
+        return { output: await b.describe(), screenshot: await b.snapshot() };
+      case "scroll":
+        await b.scroll(args.direction === "up" ? "up" : "down");
+        return { output: "Scrolled.", screenshot: await b.snapshot() };
+      case "back":
+        await b.back();
+        return { output: await b.describe(), screenshot: await b.snapshot() };
+    }
+  } catch (e: any) {
+    const msg = String(e?.message ?? e).split("\n")[0];
+    return { output: `Browser error: ${msg.includes("ERR_BLOCKED_BY_CLIENT") ? "blocked (private address, block list, or web paused)" : msg}`, screenshot: await b.snapshot() };
+  }
+  return { output: `Unknown tool ${name}.` };
+}
+
 export async function runTool(c: ToolContext, name: string, args: any): Promise<ToolOutcome> {
   const { db, settings, profile } = c;
+  if (browserAvailable() && BROWSER_TOOLS.has(name)) return runBrowserTool(c, name, args);
   switch (name) {
     case "web_search": {
       const r = await webSearch(webCtx(c), String(args.query ?? ""));

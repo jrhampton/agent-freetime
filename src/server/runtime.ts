@@ -4,8 +4,9 @@ import { chat, type ChatMessage, LlmError } from "./llm.js";
 import { getSettings, type ProviderId } from "./settings.js";
 import { basePrompt, REFLECTION_PROMPT, SUMMARY_PROMPT } from "./prompts.js";
 import { addMemory, formatMemory, pinnedMemories, recall, recentEpisodes } from "./memory.js";
-import { formatChat, runTool, toolDefs } from "./tools.js";
+import { formatChat, runTool, toolDefs, type ToolOutcome } from "./tools.js";
 import { bus } from "./bus.js";
+import { browserAvailable, closeBrowser } from "./browser.js";
 
 export interface ProfileRow {
   id: number;
@@ -21,6 +22,7 @@ export interface ProfileRow {
   max_steps: number;
   min_rest_minutes: number;
   max_rest_minutes: number;
+  session_minutes: number;
   daily_token_budget: number;
   color: string;
   autostart: number;
@@ -68,6 +70,8 @@ class AgentRunner {
   private wakeRequested = false;
   private nudgeRequested = false;
   private lastTickEndedAt = 0;
+  /** Chatroom messages that arrived mid-session, delivered before the agent's next step. */
+  private chatNotes: { id: number; line: string }[] = [];
   private consecutiveErrors = 0;
 
   constructor(
@@ -97,6 +101,13 @@ class AgentRunner {
   wake() {
     this.wakeRequested = true;
     this.wakeResolver?.();
+  }
+
+  /** Deliver a chatroom message into the session that's running now. Returns false if not mid-session. */
+  notify(id: number, line: string): boolean {
+    if (this.state.status !== "thinking") return false;
+    this.chatNotes.push({ id, line });
+    return true;
   }
 
   /**
@@ -194,7 +205,7 @@ class AgentRunner {
       ? (db.prepare("SELECT name, content FROM personalities WHERE id = ?").get(profile.personality_id) as { name: string; content: string } | undefined)
       : undefined;
     const others = this.mgr.runningNames().filter((n) => n !== profile.name);
-    const system = basePrompt(settings, { ...profile, personality_name: personality?.name, personality_content: personality?.content }, others);
+    const system = basePrompt(settings, { ...profile, personality_name: personality?.name, personality_content: personality?.content }, others, browserAvailable());
 
     // What's new since last time.
     const dms = db.prepare("SELECT * FROM dm_messages WHERE profile_id = ? AND sender = 'user' AND seen = 0 ORDER BY id").all(profile.id) as any[];
@@ -234,7 +245,11 @@ class AgentRunner {
       );
     }
     if (newChat.length) parts.push(`\n## New in the chatroom since you last looked\n${newChat.map(formatChat).join("\n")}`);
-    parts.push(`\nThis is your time. Do whatever you like, and call rest when you're done for now.`);
+    if (profile.session_minutes > 0)
+      parts.push(
+        `\nThis is your time. This session lasts ${profile.session_minutes} minutes, and you can't rest before it's over, so keep doing whatever you like until then. When it ends, call rest.`,
+      );
+    else parts.push(`\nThis is your time. Do whatever you like, and call rest when you're done for now.`);
 
     const messages: ChatMessage[] = [
       { role: "system", content: system },
@@ -250,16 +265,48 @@ class AgentRunner {
     let restResult: { minutes: number; note: string; importance: number } | undefined;
     const actions: string[] = [];
 
-    for (; steps < profile.max_steps && this.running && !restResult; steps++) {
+    this.chatNotes = [];
+    // With a session length, the clock decides when the session ends (steps are only a runaway guard).
+    const timed = profile.session_minutes > 0;
+    const sessionEnd = Date.now() + profile.session_minutes * 60_000;
+    const stepCap = timed ? 500 : profile.max_steps;
+    const leftText = () => {
+      const m = Math.max(1, Math.ceil((sessionEnd - Date.now()) / 60_000));
+      return `about ${m} minute${m === 1 ? "" : "s"}`;
+    };
+    const usedBefore = this.mgr.tokensToday(profile.id);
+    let timeUpSent = false;
+    for (; steps < stepCap && this.running && !restResult; steps++) {
+      if (timed && Date.now() >= sessionEnd) {
+        if (timeUpSent) break;
+        messages.push({ role: "user", content: "[Environment] Your session time is up. Call rest now with your note about this session." });
+        timeUpSent = true;
+      }
+      if (profile.daily_token_budget > 0 && usedBefore + tokensIn + tokensOut >= profile.daily_token_budget) {
+        this.mgr.logEvent(profile.id, tickId, "status", { message: "Daily token budget reached mid-session; ending the session early." });
+        break;
+      }
+      if (this.chatNotes.length) {
+        const notes = this.chatNotes.splice(0);
+        messages.push({ role: "user", content: `[Notification] You were mentioned in the chatroom:\n${notes.map((n) => n.line).join("\n")}` });
+        db.prepare("UPDATE profiles SET last_chat_seen_id = MAX(last_chat_seen_id, ?) WHERE id = ?").run(Math.max(...notes.map((n) => n.id)), profile.id);
+        this.mgr.logEvent(profile.id, tickId, "notification", { lines: notes.map((n) => n.line) });
+      }
       compact(messages);
-      if (steps === profile.max_steps - 1) messages.push({ role: "user", content: "[Environment] This session is almost over. You have one more action; it's a good moment to call rest." });
+      if (!timed && steps === profile.max_steps - 1) messages.push({ role: "user", content: "[Environment] This session is almost over. You have one more action; it's a good moment to call rest." });
       const res = await chat(settings, profile.provider, profile.model, messages, tools);
       tokensIn += res.tokensIn;
       tokensOut += res.tokensOut;
       model = res.routedVia ?? res.model;
       if (res.content?.trim()) this.mgr.logEvent(profile.id, tickId, "thought", { content: res.content, model });
       messages.push({ role: "assistant", content: res.content ?? null, ...(res.toolCalls.length ? { tool_calls: res.toolCalls } : {}) });
-      if (!res.toolCalls.length) break;
+      if (!res.toolCalls.length) {
+        if (!timed || timeUpSent) break;
+        // Time is left: nudge the agent on, and pause briefly so a chatty model can't spin through tokens.
+        messages.push({ role: "user", content: `[Environment] ${leftText()} of this session remain. Carry on with anything you like.` });
+        await sleep(15_000);
+        continue;
+      }
 
       for (const call of res.toolCalls) {
         let args: any = {};
@@ -269,18 +316,23 @@ class AgentRunner {
           args = { _raw: call.function.arguments };
         }
         this.mgr.logEvent(profile.id, tickId, "tool_call", { id: call.id, name: call.function.name, args });
-        let out;
+        let out: ToolOutcome;
         try {
           out = await runTool(
-            { db, settings, profile, tickId, nameOf, onChatPost: (id, content) => this.mgr.handleChatMention(content, profile.id) },
+            { db, settings, profile, tickId, nameOf, onChatPost: (id) => this.mgr.handleChatPost(id) },
             call.function.name,
             args,
           );
         } catch (e: any) {
           out = { output: `Tool error: ${e?.message ?? e}` };
         }
+        if (out.rest && timed && Date.now() < sessionEnd) {
+          // Refuse, but pause first so an agent that keeps asking to rest can't burn through tokens.
+          await sleep(Math.min(20_000, Math.max(0, sessionEnd - Date.now())));
+          out = { output: `You can't rest yet: ${leftText()} of free time left in this session. Keep doing whatever you like.` };
+        }
         actions.push(`${call.function.name}(${JSON.stringify(args).slice(0, 200)})`);
-        this.mgr.logEvent(profile.id, tickId, "tool_result", { id: call.id, name: call.function.name, output: out.output.slice(0, 6000) });
+        this.mgr.logEvent(profile.id, tickId, "tool_result", { id: call.id, name: call.function.name, output: out.output.slice(0, 6000), screenshot: out.screenshot });
         messages.push({ role: "tool", tool_call_id: call.id, content: out.output });
         if (out.rest) restResult = out.rest;
       }
@@ -352,8 +404,17 @@ class AgentRunner {
   }
 }
 
-/** Keep long sessions within small context windows: shorten older tool outputs. */
+/** Keep long sessions within small context windows: drop the oldest steps, shorten older tool outputs. */
 function compact(messages: ChatMessage[]) {
+  const KEEP = 40;
+  if (messages.length > KEEP + 2) {
+    // Cut after the system prompt and the opening context, at a point that doesn't orphan tool results.
+    let cut = messages.length - KEEP;
+    while (cut < messages.length && messages[cut].role === "tool") cut++;
+    const dropped = messages.splice(2, cut - 2);
+    const calls = dropped.flatMap((m) => (m.role === "assistant" && m.tool_calls ? m.tool_calls.map((t) => t.function.name) : []));
+    messages.splice(2, 0, { role: "user", content: `[Environment] Earlier steps of this session were trimmed to save space (you used: ${calls.join(", ") || "no tools"}).` });
+  }
   const toolIdx = messages.map((m, i) => (m.role === "tool" ? i : -1)).filter((i) => i >= 0);
   for (const i of toolIdx.slice(0, -2)) {
     const m = messages[i] as { role: "tool"; content: string; tool_call_id: string };
@@ -405,6 +466,7 @@ export class AgentManager {
   stop(id: number) {
     this.db.prepare("UPDATE profiles SET autostart = 0 WHERE id = ?").run(id);
     this.runners.get(id)?.stop();
+    void closeBrowser(id);
   }
 
   wake(id: number) {
@@ -414,6 +476,7 @@ export class AgentManager {
 
   remove(id: number) {
     this.runners.get(id)?.stop();
+    void closeBrowser(id);
     this.runners.delete(id);
   }
 
@@ -425,17 +488,27 @@ export class AgentManager {
     return [...this.runners.values()].filter((r) => r.isRunning).map((r) => this.nameOf(r.state.profileId));
   }
 
-  /** Wake any running agent mentioned as @Name in a chatroom message. */
-  handleChatMention(content: string, fromProfileId: number | null) {
+  /**
+   * Notify agents addressed in a chatroom message (@Name, or @everyone for all of them).
+   * An agent mid-session gets it before its next step. A resting agent is woken: right away
+   * when the operator wrote it, otherwise no sooner than its minimum rest, so agents mentioning
+   * each other can't keep each other awake in a tight loop.
+   */
+  handleChatPost(messageId: number) {
     if (!getSettings(this.db).wakeOnMention) return;
-    const lower = content.toLowerCase();
+    const msg = this.db.prepare("SELECT * FROM chat_messages WHERE id = ?").get(messageId) as
+      | { id: number; sender_type: string; profile_id: number | null; sender_name: string; content: string; created_at: string }
+      | undefined;
+    if (!msg) return;
+    const lower = msg.content.toLowerCase();
+    const everyone = lower.includes("@everyone");
+    const line = formatChat(msg);
     for (const r of this.runners.values()) {
-      if (!r.isRunning || r.state.profileId === fromProfileId) continue;
-      const name = this.nameOf(r.state.profileId).toLowerCase();
-      if (lower.includes("@" + name) || lower.includes("@everyone")) {
-        if (fromProfileId === null) r.wake();
-        else r.nudge(this.getProfile(r.state.profileId)?.min_rest_minutes ?? 2);
-      }
+      if (!r.isRunning || r.state.profileId === msg.profile_id) continue;
+      if (!everyone && !lower.includes("@" + this.nameOf(r.state.profileId).toLowerCase())) continue;
+      if (r.notify(msg.id, line)) continue;
+      if (msg.sender_type === "user") r.wake();
+      else r.nudge(this.getProfile(r.state.profileId)?.min_rest_minutes ?? 2);
     }
   }
 

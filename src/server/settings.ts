@@ -20,6 +20,7 @@ export interface AppSettings {
   privateHostAllowlist: string[];
   webPaused: boolean;
   reflectionEvery: number;
+  /** @Name / @everyone in the chatroom notifies those agents (mid-session, or by waking them). */
   wakeOnMention: boolean;
 }
 

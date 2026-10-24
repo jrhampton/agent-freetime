@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ts, type ChatMsg, type Dm, type Personality, type Profile, type Settings } from "./api";
-import { useLive } from "./live";
-import { Avatar, EventFeed, Field, MemoryList, StatusLine, WebTable } from "./components";
+import { useLive, useScreenStream } from "./live";
+import { Avatar, BrowserScreen, EventFeed, Field, MemoryList, StatusLine, WebTable, useFrames, useLastActions } from "./components";
 
 const COLORS = ["#7c5cff", "#e0577b", "#2f9e8f", "#e08a2f", "#3b82f6", "#a855f7", "#16a34a", "#dc2626", "#0891b2", "#ca8a04"];
 
@@ -144,6 +144,7 @@ export function AgentEditor({ profile, onSaved }: { profile?: Profile; onSaved: 
     max_steps: profile?.max_steps ?? 8,
     min_rest_minutes: profile?.min_rest_minutes ?? 2,
     max_rest_minutes: profile?.max_rest_minutes ?? 60,
+    session_minutes: profile?.session_minutes ?? 0,
     daily_token_budget: profile?.daily_token_budget ?? 200000,
     color: profile?.color ?? COLORS[Math.floor(Math.random() * COLORS.length)],
   }));
@@ -240,8 +241,11 @@ export function AgentEditor({ profile, onSaved }: { profile?: Profile; onSaved: 
         </div>
       ) : null}
       <div className="form-2">
-        <Field label="Max actions per session">
-          <input type="number" min={1} max={40} value={f.max_steps} onChange={set("max_steps")} />
+        <Field label="Session length (minutes)" hint="The agent can't rest until this much time has passed. 0 lets it decide.">
+          <input type="number" min={0} step={5} value={f.session_minutes} onChange={set("session_minutes")} />
+        </Field>
+        <Field label="Max actions per session" hint={Number(f.session_minutes) > 0 ? "Not used while a session length is set." : undefined}>
+          <input type="number" min={1} max={40} value={f.max_steps} onChange={set("max_steps")} disabled={Number(f.session_minutes) > 0} />
         </Field>
         <Field label="Min rest (minutes)">
           <input type="number" min={0.5} step={0.5} value={f.min_rest_minutes} onChange={set("min_rest_minutes")} />
@@ -265,10 +269,10 @@ export function AgentEditor({ profile, onSaved }: { profile?: Profile; onSaved: 
 
 // ---------------------------------------------------------------- agent detail
 
-const TABS = ["activity", "chat", "memory", "web", "sessions", "profile"] as const;
+const TABS = ["live", "activity", "chat", "memory", "web", "sessions", "profile"] as const;
 
 export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profile; profiles: Profile[]; tab: string; reload: () => void }) {
-  const t = (TABS as readonly string[]).includes(tab) ? tab : "activity";
+  const t = (TABS as readonly string[]).includes(tab) ? tab : "live";
   const on = profile.state.status !== "stopped";
   return (
     <div>
@@ -303,6 +307,7 @@ export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profi
           </button>
         ))}
       </div>
+      {t === "live" ? <LiveView profile={profile} profiles={profiles} /> : null}
       {t === "activity" ? <EventFeed profileId={profile.id} profiles={profiles} /> : null}
       {t === "chat" ? <DmChat profile={profile} /> : null}
       {t === "memory" ? <MemoryList profileId={profile.id} profiles={profiles} /> : null}
@@ -327,6 +332,55 @@ export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profi
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function LiveView({ profile, profiles }: { profile: Profile; profiles: Profile[] }) {
+  useScreenStream(profile.id);
+  const { frames, available } = useFrames();
+  return (
+    <div className="live">
+      <div className="stack">
+        {available ? (
+          <BrowserScreen frame={frames.get(profile.id)} profile={profile} big />
+        ) : (
+          <div className="banner warn">The server has no Chromium, so agents browse with plain page fetches and there's nothing to watch. Page loads still show up in the activity feed.</div>
+        )}
+      </div>
+      <div className="side">
+        <EventFeed profileId={profile.id} profiles={profiles} limit={60} />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- all browsers
+
+export function Browsers({ profiles }: { profiles: Profile[] }) {
+  useScreenStream("all");
+  const { frames, available } = useFrames();
+  const awake = profiles.filter((p) => p.state.status !== "stopped");
+  const last = useLastActions(profiles.map((p) => p.id));
+  return (
+    <div className="stack">
+      <div className="row between">
+        <h1 style={{ margin: 0 }}>Browsers</h1>
+        <span className="small muted">Live view of every running agent's browser. Click one for full detail.</span>
+      </div>
+      {!available ? <div className="banner warn">Chromium isn't available on the server, so there are no live browsers to show.</div> : null}
+      {!awake.length ? <div className="card empty">No agents are running.</div> : null}
+      <div className="grid screens">
+        {awake.map((p) => (
+          <a key={p.id} className="tile" href={`#/agents/${p.id}/live`}>
+            <div className="row">
+              <Avatar p={p} size={22} /> <b>{p.name}</b>
+            </div>
+            <BrowserScreen frame={frames.get(p.id)} profile={p} />
+            <div className="caption">{last.get(p.id) ?? ""}</div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -788,8 +842,8 @@ export function SettingsPage() {
           />
         </Field>
         <label className="check">
-          <input type="checkbox" checked={s.wakeOnMention} onChange={(e) => setS({ ...s, wakeOnMention: e.target.checked })} /> @mentions in the chatroom wake agents
-          early
+          <input type="checkbox" checked={s.wakeOnMention} onChange={(e) => setS({ ...s, wakeOnMention: e.target.checked })} /> Notify agents when they're @mentioned in
+          the chatroom (@everyone notifies all)
         </label>
       </div>
     </form>

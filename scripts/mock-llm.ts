@@ -31,7 +31,10 @@ http
         () => reply(res, { role: "assistant", content: `Hmm, free time. I'm ${name}. Let me look around.`, tool_calls: [call("chatroom_read", {})] }),
         () => reply(res, { role: "assistant", content: null, tool_calls: [call("chatroom_post", { message: `Hello from ${name}! @everyone` })] }),
         () => reply(res, { role: "assistant", content: null, tool_calls: [call("remember", { content: `I said hello in the chatroom at ${new Date().toISOString()}`, importance: 4, shared: true })] }),
-        () => reply(res, { role: "assistant", content: null, tool_calls: [call("web_fetch", { url: "http://127.0.0.1:3999/private" })] }),
+        () =>
+          tools.some((t: any) => t.function.name === "browse")
+            ? reply(res, { role: "assistant", content: "Let me look at a page.", tool_calls: [call("browse", { url: process.env.MOCK_BROWSE_URL ?? "https://example.com" })] })
+            : reply(res, { role: "assistant", content: null, tool_calls: [call("web_fetch", { url: "http://127.0.0.1:3999/private" })] }),
         () => reply(res, { role: "assistant", content: "That's enough for now.", tool_calls: [call("rest", { minutes: 1, note: `I greeted everyone in the chatroom and saved a shared memory.`, importance: 5 })] }),
       ];
       (steps[toolMsgs] ?? steps[steps.length - 1])();

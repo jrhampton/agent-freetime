@@ -8,6 +8,8 @@ import { chat, listModels } from "./llm.js";
 import { addMemory, stripEmbedding, type MemoryRow } from "./memory.js";
 import { postChat } from "./tools.js";
 import { bus, type BusMessage } from "./bus.js";
+import fs from "node:fs";
+import { browserAvailable, latestFrame, screenshotPath } from "./browser.js";
 
 const PROFILE_FIELDS = {
   name: "string",
@@ -22,6 +24,7 @@ const PROFILE_FIELDS = {
   max_steps: "int",
   min_rest_minutes: "number",
   max_rest_minutes: "number",
+  session_minutes: "number",
   daily_token_budget: "int",
   color: "string",
 } as const;
@@ -352,7 +355,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, mgr: AgentManager) 
     const content = String((req.body as any)?.content ?? "").trim();
     if (!content) throw new HttpError(400, "content is required");
     const row = postChat(db, { type: "user", profileId: null, name: "Operator" }, content);
-    mgr.handleChatMention(content, null);
+    mgr.handleChatPost(row.id);
     return row;
   });
 
@@ -389,13 +392,66 @@ export function registerRoutes(app: FastifyInstance, db: DB, mgr: AgentManager) 
     providerConfigured: !!getSettings(db).providers.freellmapi.apiKey || !!getSettings(db).providers.openrouter.apiKey,
   }));
 
+  // ---- browser views
+  app.get("/api/screens/latest", async () => {
+    const ids = (db.prepare("SELECT id FROM profiles").all() as { id: number }[]).map((r) => r.id);
+    return { available: browserAvailable(), frames: ids.map((id) => latestFrame(id)).filter(Boolean) };
+  });
+  app.get("/api/screens/:id/:file", async (req, reply) => {
+    const { id, file } = req.params as any;
+    const p = screenshotPath(Number(id), String(file));
+    if (!p) throw new HttpError(404, "not found");
+    reply.header("Cache-Control", "private, max-age=86400").type("image/jpeg");
+    return fs.createReadStream(p);
+  });
+
   // ---- live updates
   app.get("/ws", { websocket: true }, (socket) => {
+    // Screen frames are heavy, so each socket says which agents' screens it wants:
+    // {"screens": "all"} for the grid (throttled), {"screens": [id]} for one agent, or {"screens": []}.
+    let screens: "all" | Set<number> = new Set();
+    const lastFrame = new Map<number, number>();
+    const trailing = new Map<number, NodeJS.Timeout>();
+    socket.on("message", (raw: Buffer) => {
+      try {
+        const m = JSON.parse(String(raw));
+        if (m.screens === "all") screens = "all";
+        else if (Array.isArray(m.screens)) screens = new Set(m.screens.map(Number));
+      } catch {}
+    });
     const send = (m: BusMessage) => {
-      if (socket.readyState === 1) socket.send(JSON.stringify(m));
+      if (socket.readyState !== 1) return;
+      if (m.channel === "screen") {
+        const id = Number(m.profileId);
+        const focused = screens !== "all" && screens.has(id);
+        if (!focused && screens !== "all") return;
+        const gap = focused ? 250 : 1200;
+        const wait = gap - (Date.now() - (lastFrame.get(id) ?? 0));
+        if (m.payload && wait > 0) {
+          // Throttled: send whatever the newest frame is once the gap passes, so the view never goes stale.
+          if (!trailing.has(id))
+            trailing.set(
+              id,
+              setTimeout(() => {
+                trailing.delete(id);
+                const f = latestFrame(id);
+                if (f && socket.readyState === 1) {
+                  lastFrame.set(id, Date.now());
+                  socket.send(JSON.stringify({ channel: "screen", profileId: id, payload: f }));
+                }
+              }, wait),
+            );
+          return;
+        }
+        lastFrame.set(id, Date.now());
+      }
+      socket.send(JSON.stringify(m));
     };
     bus.on("message", send);
-    socket.on("close", () => bus.off("message", send));
+    socket.on("close", () => {
+      bus.off("message", send);
+      trailing.forEach((t) => clearTimeout(t));
+    });
   });
 }
 
