@@ -10,6 +10,7 @@ import { postChat } from "./tools.js";
 import { bus, type BusMessage } from "./bus.js";
 import fs from "node:fs";
 import { browserAvailable, latestFrame, screenshotPath } from "./browser.js";
+import { agentFiles, zip } from "./agentfile.js";
 
 const PROFILE_FIELDS = {
   name: "string",
@@ -263,6 +264,27 @@ export function registerRoutes(app: FastifyInstance, db: DB, mgr: AgentManager) 
     if (q.tickId) (where.push("tick_id = ?"), args.push(Number(q.tickId)));
     const rows = db.prepare(`SELECT * FROM events ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY id DESC LIMIT ?`).all(...args, limit) as any[];
     return rows.map((r) => ({ ...r, data: JSON.parse(r.data) }));
+  });
+  // ---- what an agent is made of
+  const profileRow = (id: number) => {
+    const p = db.prepare("SELECT * FROM profiles WHERE id = ?").get(id) as any;
+    if (!p) throw new HttpError(404, "Agent not found");
+    return p;
+  };
+  app.get("/api/profiles/:id/anatomy", async (req) => {
+    const p = profileRow(Number((req.params as any).id));
+    const files = agentFiles(db, getSettings(db), p).map((f) => ({ ...f, bytes: Buffer.byteLength(f.content) }));
+    const models = db
+      .prepare("SELECT model_used AS model, COUNT(*) AS sessions FROM ticks WHERE profile_id = ? AND model_used IS NOT NULL GROUP BY model_used ORDER BY sessions DESC")
+      .all(p.id);
+    return { files, models };
+  });
+  app.get("/api/profiles/:id/download", async (req, reply) => {
+    const p = profileRow(Number((req.params as any).id));
+    const slug = p.name.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-|-$/g, "") || `agent-${p.id}`;
+    const body = zip(agentFiles(db, getSettings(db), p).map((f) => ({ path: `${slug}/${f.path}`, content: f.content })));
+    reply.header("Content-Disposition", `attachment; filename="${slug}.zip"`).type("application/zip");
+    return body;
   });
   app.get("/api/profiles/:id/ticks", async (req) => {
     return db.prepare("SELECT * FROM ticks WHERE profile_id = ? ORDER BY id DESC LIMIT 100").all(Number((req.params as any).id));
