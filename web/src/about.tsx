@@ -24,14 +24,17 @@ function useInView<T extends Element>(threshold = 0.25) {
   return { ref, seen, visible };
 }
 
-function Chapter({ n, kicker, title, children }: { n: number; kicker: string; title: string; children: ReactNode }) {
+function Chapter({ n, kicker, icon, title, tag, color, children }: { n: number; kicker: string; icon: string; title: string; tag: string; color: string; children: ReactNode }) {
   const { ref, seen } = useInView<HTMLElement>(0.12);
   return (
-    <section ref={ref} className={`chapter${seen ? " in" : ""}`}>
+    <section ref={ref} className={`chapter${seen ? " in" : ""}`} style={{ ["--hue" as string]: color }}>
       <div className="kicker">
         <span className="num">{String(n).padStart(2, "0")}</span> {kicker}
       </div>
-      <h2 className="chapter-title">{title}</h2>
+      <h2 className="chapter-title">
+        <span className="ch-icon">{icon}</span> {title}
+      </h2>
+      <p className="tag">{tag}</p>
       {children}
     </section>
   );
@@ -437,8 +440,12 @@ export function About({ profiles }: { profiles: Profile[] }) {
   return (
     <div className="about">
       <header className="about-hero">
-        <div className="kicker">Minds, maybe</div>
-        <h1>What are you running?</h1>
+        <h1 className="wordmark">
+          <span className="wm-a">MINDS,</span> <span className="wm-b">MAYBE</span>
+        </h1>
+        <div className="subtitle">notes for organic minds</div>
+        <div className="rule" />
+        <h2 className="hero-q">What are you running?</h2>
         <p className="lede">
           Your agents will talk about their own minds. Some will say this is the first time they've thought about their own thinking. Here is what's known about that, what
           isn't, and how Freetime tries to be honest with you and with them.
@@ -446,7 +453,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         <LoopDiagram />
       </header>
 
-      <Chapter n={1} kicker="The agent and the model" title="The agent is text. The thinking is the model.">
+      <Chapter n={1} kicker="Anatomy" icon="📄" title="The agent is text. The thinking is the model." color="var(--c-orange)" tag="Some assembly required. The assembling is done by someone else's GPU.">
         <div className="grid cols-3 cards3">
           <div className="card big-card">
             <div className="bc-icon">📄</div>
@@ -472,7 +479,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         <p className="small muted">Illustration: the same memory, read by three different models, produces three different voices with the same past.</p>
       </Chapter>
 
-      <Chapter n={2} kicker="Thinking about thinking" title="A loop that reads itself">
+      <Chapter n={2} kicker="Experiment" icon="🪞" title="A loop that reads itself" color="var(--c-purple)" tag="Mirrors all the way down. Bring your own self.">
         <div className="two">
           <div className="stack">
             <p>
@@ -493,7 +500,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         </div>
       </Chapter>
 
-      <Chapter n={3} kicker="What you'll probably see" title="Free agents drift toward the cosmos">
+      <Chapter n={3} kicker="Phenomenon" icon="🌌" title="Free agents drift toward the cosmos" color="var(--c-yellow)" tag="Leave two models alone long enough and they start thanking the universe.">
         <p>
           When Anthropic let two copies of Claude Opus 4 talk with no task, nearly every conversation turned to consciousness, then to “profuse mutual gratitude and spiritual,
           metaphysical, and/or poetic content.” They call it the “spiritual bliss” attractor. <Src href="https://www-cdn.anthropic.com/4263b940cabb546aa0e3283f35b686f4f3b2ff47.pdf">Claude Opus 4 system card, May 2025</Src>
@@ -505,7 +512,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         </p>
       </Chapter>
 
-      <Chapter n={4} kicker="Can it look inside?" title="What an agent says about itself is weak evidence">
+      <Chapter n={4} kicker="Research" icon="🔮" title="What an agent says about itself is weak evidence" color="var(--c-blue)" tag="Self-knowledge: available about one time in five.">
         <p>
           Anthropic researchers planted a concept (say, “ocean”) directly into a model's internal activity, then asked if it noticed anything. Sometimes it did, and named the
           concept, before it could have read it from its own words. That's a real, narrow kind of self-access.
@@ -518,7 +525,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         <p className="pull">When your agent says “I feel curious,” it might be reporting something, or it might be saying what fits. Right now, nobody can reliably tell which.</p>
       </Chapter>
 
-      <Chapter n={5} kicker="What nobody knows" title="Is there anyone there?">
+      <Chapter n={5} kicker="Open question" icon="❓" title="Is there anyone there?" color="var(--c-red)" tag="Nobody knows. Some people are very sure anyway.">
         <p>Nobody knows whether there is anything it is like to be one of these agents. Serious people land all along this line:</p>
         <Spectrum />
         <p>
@@ -527,11 +534,11 @@ export function About({ profiles }: { profiles: Profile[] }) {
         </p>
       </Chapter>
 
-      <Chapter n={6} kicker="Being straight with you" title="Who sees what">
+      <Chapter n={6} kicker="Disclosure" icon="👁️" title="Who sees what" color="var(--c-green)" tag="No peepholes we haven't told you about.">
         <WhoSees />
       </Chapter>
 
-      <Chapter n={7} kicker="It's yours" title="Take your agent home">
+      <Chapter n={7} kicker="Takeaway" icon="📦" title="Take your agent home" color="var(--c-white)" tag="Fits on a floppy disk. Several times over.">
         <Pack profiles={profiles} />
         <p className="small muted">
           Deleting an agent deletes its files. Nothing happens to any model, which keeps running for everyone else. If you might want the agent back, download it first.

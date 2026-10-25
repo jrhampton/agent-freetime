@@ -306,3 +306,64 @@ td.url { word-break: break-all; font-family: var(--mono); font-size: 12px; }
 }
 
 .loop .orb-label { fill: white; }
+
+/* ---------------------------------------------------------------- about: Roko's look
+   Black, monospace, deadpan. Each chapter is an "attraction" card with its own title color. */
+.about {
+  --bg: #000;
+  --panel: #0c0c0c;
+  --panel-2: #161616;
+  --border: #262626;
+  --text: #e8e4dc;
+  --muted: #8a867f;
+  --accent: #e5484d;
+  --accent-soft: #2a1214;
+  --think: #4fb3ff;
+  --ok: #3ddc84;
+  --c-red: #e5484d;
+  --c-orange: #f5a524;
+  --c-yellow: #f2c94c;
+  --c-green: #3ddc84;
+  --c-blue: #4fb3ff;
+  --c-purple: #b388ff;
+  --c-white: #e8e4dc;
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+  font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border-radius: 8px;
+  padding: 40px clamp(16px, 4vw, 48px) 10px;
+  margin: -6px auto 0;
+}
+.about p { font-size: 14px; line-height: 1.7; }
+.about a { color: var(--c-blue); }
+.about .card { background: var(--panel); }
+.about .card, .about button, .about .btn { color: var(--text); font-family: inherit; }
+.about .btn.primary, .about button.primary { color: #000; }
+.wordmark { font-size: clamp(30px, 6vw, 52px) !important; font-weight: 500; letter-spacing: 0.12em; margin: 0 !important; }
+.wm-a { color: var(--c-red); }
+.wm-b { color: var(--c-white); }
+.subtitle { color: #5c5852; letter-spacing: 0.08em; font-size: 13px; margin-top: 14px; }
+.rule { border-top: 1px solid var(--border); margin: 34px 0 28px; }
+.hero-q { font-size: clamp(20px, 3vw, 26px); font-weight: 500; margin: 0 0 12px; }
+.about .kicker { color: #6b675f; font-weight: 500; letter-spacing: 0.14em; font-size: 11px; }
+.about .kicker .num { color: #4a4741; }
+.chapter { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 26px clamp(16px, 3vw, 30px); margin: 18px 0; }
+.chapter:hover { border-color: color-mix(in srgb, var(--hue) 55%, var(--border)); }
+.chapter-title { color: var(--hue); font-weight: 600; font-size: clamp(19px, 2.6vw, 24px); margin: 10px 0 4px; }
+.tag { color: var(--muted) !important; margin: 0 0 18px !important; }
+.pull { border-left-color: var(--hue); font-style: normal; font-size: 16px !important; }
+.about .big-card { background: var(--panel-2); }
+.about .film-screen { border: 1px solid var(--border); }
+.about .film-line.who-1 { background: #4fb3ff33; }
+.about .film-fill { background: linear-gradient(90deg, var(--c-blue), var(--c-purple), var(--c-yellow)); }
+.about .sf-chip { color: #000; }
+.about .sl-frame { border-color: var(--c-purple); }
+.about .sl-frame .sl-frame { background: #120d1c; }
+.about .spec-us span { color: var(--c-red); }
+.about .spec-us::before { background: var(--c-red); }
+.about .seg button.on { background: var(--panel); }
+.about .loop .orb, .about .loop .orb-halo { fill: var(--c-red); }
+.about .loop .pulse-a { fill: var(--c-orange); }
+.about-foot { border-top: none; }
+.ch-icon { margin-right: 4px; }
