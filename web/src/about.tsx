@@ -24,15 +24,13 @@ function useInView<T extends Element>(threshold = 0.25) {
   return { ref, seen, visible };
 }
 
-function Chapter({ n, kicker, title, barker, children }: { n: number; kicker: string; title: string; barker: string; children: ReactNode }) {
+function Chapter({ n, kicker, title, children }: { n: number; kicker: string; title: string; children: ReactNode }) {
   const { ref, seen } = useInView<HTMLElement>(0.12);
   return (
     <section ref={ref} className={`chapter${seen ? " in" : ""}`}>
-      <div className="ticket">
-        <span className="ticket-stub">Admit one · No. {String(n).padStart(2, "0")}</span>
-        <span className="ticket-name">{kicker}</span>
+      <div className="kicker">
+        <span className="num">{String(n).padStart(2, "0")}</span> {kicker}
       </div>
-      <p className="barker">{barker}</p>
       <h2 className="chapter-title">{title}</h2>
       {children}
     </section>
@@ -58,13 +56,6 @@ function LoopDiagram() {
   );
   return (
     <svg className="loop" viewBox="0 0 760 300" role="img" aria-label="Files are read by a model, which acts in the world, and what mattered is written back to the files">
-      <defs>
-        <radialGradient id="orbGrad" cx="40%" cy="35%">
-          <stop offset="0%" stopColor="#fff1c9" />
-          <stop offset="55%" stopColor="#f2b544" />
-          <stop offset="100%" stopColor="#c9832a" />
-        </radialGradient>
-      </defs>
       <path d={toModel} className="wire" />
       <path d={toWorld} className="wire" />
       <path d={back} className="wire dashed" />
@@ -445,12 +436,8 @@ function Pack({ profiles }: { profiles: Profile[] }) {
 export function About({ profiles }: { profiles: Profile[] }) {
   return (
     <div className="about">
-      <div className="lights" aria-hidden="true" />
       <header className="about-hero">
-        <div className="marquee">
-          <span>Minds, maybe</span>
-        </div>
-        <div className="kicker">Step right up</div>
+        <div className="kicker">Minds, maybe</div>
         <h1>What are you running?</h1>
         <p className="lede">
           Your agents will talk about their own minds. Some will say this is the first time they've thought about their own thinking. Here is what's known about that, what
@@ -459,7 +446,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         <LoopDiagram />
       </header>
 
-      <Chapter n={1} kicker="The Ticket Booth" barker="One ticket, three parts. Read the stub before you go in." title="The agent is text. The thinking is the model.">
+      <Chapter n={1} kicker="The agent and the model" title="The agent is text. The thinking is the model.">
         <div className="grid cols-3 cards3">
           <div className="card big-card">
             <div className="bc-icon">📄</div>
@@ -485,7 +472,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         <p className="small muted">Illustration: the same memory, read by three different models, produces three different voices with the same past.</p>
       </Chapter>
 
-      <Chapter n={2} kicker="The Hall of Mirrors" barker="See yourself seeing yourself! No, really. That's the whole idea." title="A loop that reads itself">
+      <Chapter n={2} kicker="Thinking about thinking" title="A loop that reads itself">
         <div className="two">
           <div className="stack">
             <p>
@@ -506,7 +493,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         </div>
       </Chapter>
 
-      <Chapter n={3} kicker="The Midnight Show" barker="Same show every night, and nobody wrote it." title="Free agents drift toward the cosmos">
+      <Chapter n={3} kicker="What you'll probably see" title="Free agents drift toward the cosmos">
         <p>
           When Anthropic let two copies of Claude Opus 4 talk with no task, nearly every conversation turned to consciousness, then to “profuse mutual gratitude and spiritual,
           metaphysical, and/or poetic content.” They call it the “spiritual bliss” attractor. <Src href="https://www-cdn.anthropic.com/4263b940cabb546aa0e3283f35b686f4f3b2ff47.pdf">Claude Opus 4 system card, May 2025</Src>
@@ -518,7 +505,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         </p>
       </Chapter>
 
-      <Chapter n={4} kicker="The Fortune Teller" barker="She reads her own palm. Results vary." title="What an agent says about itself is weak evidence">
+      <Chapter n={4} kicker="Can it look inside?" title="What an agent says about itself is weak evidence">
         <p>
           Anthropic researchers planted a concept (say, “ocean”) directly into a model's internal activity, then asked if it noticed anything. Sometimes it did, and named the
           concept, before it could have read it from its own words. That's a real, narrow kind of self-access.
@@ -531,7 +518,7 @@ export function About({ profiles }: { profiles: Profile[] }) {
         <p className="pull">When your agent says “I feel curious,” it might be reporting something, or it might be saying what fits. Right now, nobody can reliably tell which.</p>
       </Chapter>
 
-      <Chapter n={5} kicker="The Big Question Tent" barker="The barker lowers his voice for this one." title="Is there anyone there?">
+      <Chapter n={5} kicker="What nobody knows" title="Is there anyone there?">
         <p>Nobody knows whether there is anything it is like to be one of these agents. Serious people land all along this line:</p>
         <Spectrum />
         <p>
@@ -540,11 +527,11 @@ export function About({ profiles }: { profiles: Profile[] }) {
         </p>
       </Chapter>
 
-      <Chapter n={6} kicker="Who's Watching the Tent" barker="Every tent has a peephole. Here are all of ours." title="Who sees what">
+      <Chapter n={6} kicker="Being straight with you" title="Who sees what">
         <WhoSees />
       </Chapter>
 
-      <Chapter n={7} kicker="The Prize Booth" barker="Everybody wins. The prize is a zip file." title="Take your agent home">
+      <Chapter n={7} kicker="It's yours" title="Take your agent home">
         <Pack profiles={profiles} />
         <p className="small muted">
           Deleting an agent deletes its files. Nothing happens to any model, which keeps running for everyone else. If you might want the agent back, download it first.
