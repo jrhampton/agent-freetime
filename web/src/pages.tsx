@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ts, type ChatMsg, type Dm, type Personality, type Profile, type Settings } from "./api";
 import { useLive, useScreenStream } from "./live";
+import { AgentAnatomy } from "./about";
 import { Avatar, BrowserScreen, EventFeed, Field, MemoryList, StatusLine, WebTable, useFrames, useLastActions } from "./components";
 
 const COLORS = ["#7c5cff", "#e0577b", "#2f9e8f", "#e08a2f", "#3b82f6", "#a855f7", "#16a34a", "#dc2626", "#0891b2", "#ca8a04"];
@@ -269,7 +270,8 @@ export function AgentEditor({ profile, onSaved }: { profile?: Profile; onSaved: 
 
 // ---------------------------------------------------------------- agent detail
 
-const TABS = ["live", "activity", "chat", "memory", "web", "sessions", "profile"] as const;
+const TABS = ["live", "activity", "chat", "memory", "web", "sessions", "anatomy", "profile"] as const;
+const TAB_LABELS: Record<string, string> = { anatomy: "What it is" };
 
 export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profile; profiles: Profile[]; tab: string; reload: () => void }) {
   const t = (TABS as readonly string[]).includes(tab) ? tab : "live";
@@ -303,7 +305,7 @@ export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profi
       <div className="tabs">
         {TABS.map((x) => (
           <button key={x} className={x === t ? "on" : ""} onClick={() => (location.hash = `#/agents/${profile.id}/${x}`)}>
-            {x[0].toUpperCase() + x.slice(1)}
+            {TAB_LABELS[x] ?? x[0].toUpperCase() + x.slice(1)}
           </button>
         ))}
       </div>
@@ -313,11 +315,14 @@ export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profi
       {t === "memory" ? <MemoryList profileId={profile.id} profiles={profiles} /> : null}
       {t === "web" ? <WebTable profileId={profile.id} profiles={profiles} /> : null}
       {t === "sessions" ? <Sessions profile={profile} /> : null}
+      {t === "anatomy" ? <AgentAnatomy profile={profile} /> : null}
       {t === "profile" ? (
         <div className="stack">
           <AgentEditor profile={profile} onSaved={() => reload()} />
           <div className="card row between">
-            <span className="muted">Deleting an agent also deletes its private memories and history.</span>
+            <span className="muted">
+              Deleting an agent deletes its files: memories, journal and history. No model is affected. <a href={`/api/profiles/${profile.id}/download`}>Download {profile.name} first</a> if you might want it back.
+            </span>
             <button
               className="danger"
               onClick={async () => {

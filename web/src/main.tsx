@@ -4,6 +4,7 @@ import "./styles.css";
 import { api } from "./api";
 import { startLive } from "./live";
 import { useProfiles } from "./components";
+import { About } from "./about";
 import { AgentDetail, AgentEditor, Browsers, Chatroom, Dashboard, Personalities, SettingsPage, SharedMemory, WebMonitor } from "./pages";
 
 function useHash() {
@@ -24,6 +25,7 @@ const NAV = [
   ["#/memory", "🧠", "Shared memory"],
   ["#/personalities", "🎭", "Personalities"],
   ["#/settings", "⚙️", "Settings"],
+  ["#/about", "🌀", "Minds, maybe"],
 ] as const;
 
 function Shell() {
@@ -59,6 +61,7 @@ function Shell() {
   else if (parts[0] === "memory") page = <SharedMemory profiles={profiles} />;
   else if (parts[0] === "personalities") page = <Personalities />;
   else if (parts[0] === "settings") page = <SettingsPage />;
+  else if (parts[0] === "about") page = <About profiles={profiles} />;
   else page = <Dashboard profiles={profiles} />;
 
   const active = (h: string) => (h === "#/" ? hash === "#/" || hash === "" : hash.startsWith(h));

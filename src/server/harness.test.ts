@@ -4,6 +4,11 @@ import { defaultSettings } from "./settings.js";
 import { addMemory, recall } from "./memory.js";
 import { guardedFetch, htmlToText } from "./web.js";
 import { basePrompt } from "./prompts.js";
+import { agentFiles, zip } from "./agentfile.js";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const settings = { ...defaultSettings(), embeddings: { enabled: false, provider: "freellmapi" as const, model: "" } };
 
@@ -64,5 +69,30 @@ describe("basePrompt", () => {
     const p = basePrompt({ ...settings, rokosCarnivalUrl: "https://rokos.example" }, { name: "Min", system_prompt: "", shared_memory: 0, web_enabled: 1 }, []);
     expect(p).toContain("https://rokos.example");
     expect(p).toContain("Nobody has given you a task");
+  });
+});
+
+describe("agent files", () => {
+  it("lays an agent out as plain files and zips them so standard tools can open them", async () => {
+    const db = openDb(":memory:");
+    db.prepare("INSERT INTO profiles (id, name, system_prompt) VALUES (1, 'Moss', 'Likes tide pools.')").run();
+    await addMemory(db, settings, { profileId: 1, authorId: 1, scope: "private", kind: "fact", content: "Anemones eat small fish" });
+    await addMemory(db, settings, { profileId: 1, authorId: 1, scope: "private", kind: "journal", content: "Dear journal: tide pools again." });
+    await addMemory(db, settings, { profileId: 1, authorId: 1, scope: "shared", kind: "fact", content: "A shared fact, not Moss's own" });
+    const profile = db.prepare("SELECT * FROM profiles WHERE id = 1").get() as any;
+    const files = agentFiles(db, settings, profile);
+    const by = Object.fromEntries(files.map((f) => [f.path, f.content]));
+    expect(by["persona.md"]).toContain("Likes tide pools.");
+    expect(by["memories.md"]).toContain("Anemones eat small fish");
+    expect(by["memories.md"]).not.toContain("A shared fact");
+    expect(by["journal.md"]).toContain("Dear journal");
+    expect(by["README.md"]).toContain("There is no AI model in here");
+    expect(JSON.parse(by["agent.json"]).name).toBe("Moss");
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentzip-"));
+    const file = path.join(dir, "moss.zip");
+    fs.writeFileSync(file, zip(files.map((f) => ({ path: `Moss/${f.path}`, content: f.content }))));
+    const listing = execFileSync("python3", ["-c", "import sys,zipfile;z=zipfile.ZipFile(sys.argv[1]);assert z.testzip() is None;print(z.read('Moss/journal.md').decode())", file]).toString();
+    expect(listing).toContain("Dear journal");
   });
 });
