@@ -37,7 +37,7 @@ export class LlmError extends Error {
   }
 }
 
-function headersFor(provider: ProviderId, apiKey: string): Record<string, string> {
+export function headersFor(provider: ProviderId, apiKey: string): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) h.Authorization = `Bearer ${apiKey}`;
   if (provider === "openrouter") {

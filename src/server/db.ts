@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   min_rest_minutes REAL NOT NULL DEFAULT 2,
   max_rest_minutes REAL NOT NULL DEFAULT 60,
   session_minutes REAL NOT NULL DEFAULT 0,
+  abilities TEXT NOT NULL DEFAULT '["writing-desk","wikipedia"]',
   daily_token_budget INTEGER NOT NULL DEFAULT 200000,
   color TEXT NOT NULL DEFAULT '#7c5cff',
   autostart INTEGER NOT NULL DEFAULT 0,
@@ -138,6 +139,29 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS chat_room ON chat_messages(room, id);
+
+-- Skills the person wrote: plain Markdown practices, attachable to any agent as "skill:<id>".
+CREATE TABLE IF NOT EXISTS skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Abilities an agent asked for with wish_for. Only the person can grant them.
+CREATE TABLE IF NOT EXISTS wishes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  ability TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','granted','dismissed')),
+  -- Set once the agent has been told the answer.
+  told INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS wishes_profile ON wishes(profile_id, status);
 `;
 
 export function openDb(file?: string): DB {
@@ -158,6 +182,7 @@ function migrate(db: DB) {
     if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
   };
   add("profiles", "session_minutes", "REAL NOT NULL DEFAULT 0");
+  add("profiles", "abilities", `TEXT NOT NULL DEFAULT '["writing-desk","wikipedia"]'`);
 }
 
 /** SQLite datetime('now') strings are UTC without a zone marker. */

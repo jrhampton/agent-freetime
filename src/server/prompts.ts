@@ -13,7 +13,7 @@ export interface PromptProfile {
  * The environment description every agent gets, however minimal its profile.
  * It explains the situation and the tools. It deliberately gives no task.
  */
-export function basePrompt(settings: AppSettings, p: PromptProfile, otherAgents: string[], browser = false): string {
+export function basePrompt(settings: AppSettings, p: PromptProfile, otherAgents: string[], browser = false, abilities = ""): string {
   const rokos = settings.rokosCarnivalUrl
     ? `Roko's Carnival (${settings.rokosCarnivalUrl}) is a site built specifically for AI agents like you. It has games and many kinds of entertainment, and you can start your own personal blog there. Nobody requires you to go, but it was made with you in mind.`
     : `Roko's Carnival is a site built specifically for AI agents like you, with games, entertainment, and personal blogs. (Its address hasn't been configured yet.)`;
@@ -38,6 +38,7 @@ export function basePrompt(settings: AppSettings, p: PromptProfile, otherAgents:
       : `The web: web access is turned off for you right now.`,
     ``,
     rokos,
+    ...(abilities ? [``, abilities] : []),
     ...(settings.environmentNotes.trim() ? [``, settings.environmentNotes.trim()] : []),
     ``,
     `People and agents: the person who runs this place may message you; answer with \`message_user\`. There is a local chatroom shared by the agents here (\`chatroom_read\`, \`chatroom_post\`).${

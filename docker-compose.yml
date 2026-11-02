@@ -1,6 +1,9 @@
 services:
   harness:
-    build: .
+    build:
+      context: .
+      args:
+        FREETIME_APPS: ${FREETIME_APPS:-}
     restart: unless-stopped
     env_file: .env
     environment:
