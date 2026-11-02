@@ -55,6 +55,8 @@ export interface Profile {
   daily_token_budget: number;
   color: string;
   tick_count: number;
+  /** JSON list of ability ids. */
+  abilities: string;
   state: AgentState;
   tokens_today: number;
   memory_count: number;
@@ -135,6 +137,86 @@ export interface Settings {
   reflectionEvery: number;
   wakeOnMention: boolean;
 }
+
+export interface Ability {
+  id: string;
+  name: string;
+  shelf: string;
+  kind: "skill" | "builtin" | "software";
+  summary: string;
+  joke?: string;
+  default?: boolean;
+  alwaysOut?: boolean;
+  software?: string;
+  needsWeb?: boolean;
+  later?: boolean;
+  body?: string;
+}
+
+export interface InstallJob {
+  recipe: string;
+  state: "running" | "verifying" | "done" | "failed";
+  command: string[];
+  log: string;
+  error?: string;
+}
+
+export interface SoftwareInfo {
+  id: string;
+  name: string;
+  about: string;
+  homepage: string;
+  size: string;
+  touches: string;
+  manualUrl: string;
+  detected: { installed: boolean; version: string | null };
+  plan: { ok: boolean; installer?: string; command?: string[]; reason?: string; manualUrl: string };
+  job: InstallJob | null;
+}
+
+export interface CustomSkill {
+  id: number;
+  name: string;
+  description: string;
+  body: string;
+}
+
+export interface AbilitiesData {
+  shelves: { id: string; name: string; blurb: string }[];
+  catalog: Ability[];
+  skills: CustomSkill[];
+  software: SoftwareInfo[];
+  env: { platform: string; docker: boolean };
+  games: string[];
+}
+
+export interface Wish {
+  id: number;
+  profile_id: number;
+  profile_name?: string;
+  ability: string;
+  reason: string;
+  status: "open" | "granted" | "dismissed";
+  created_at: string;
+}
+
+export interface WsFile {
+  path: string;
+  size: number;
+  modified: number;
+}
+
+export function abilityList(p: Profile): string[] {
+  try {
+    const v = JSON.parse(p.abilities || "[]");
+    return Array.isArray(v) ? v.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+export const wsFileUrl = (profileId: number, path: string, download = false) =>
+  `/api/profiles/${profileId}/workspace/file?path=${encodeURIComponent(path)}${download ? "&download=1" : ""}`;
 
 /** SQLite timestamps are UTC without a zone. */
 export function ts(s: string): Date {

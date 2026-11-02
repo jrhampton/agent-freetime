@@ -54,13 +54,15 @@ function Shell() {
     const p = profiles.find((x) => x.id === Number(parts[1]));
     page = p ? <AgentDetail key={p.id} profile={p} profiles={profiles} tab={parts[2] ?? "activity"} reload={reload} /> : <div className="empty">Agent not found.</div>;
   } else if (parts[0] === "chatroom") page = <Chatroom profiles={profiles} />;
-  else if (parts[0] === "browsers") page = <Browsers profiles={profiles} />;
+  else if (parts[0] === "browsers") page = <Browsers profiles={profiles} focusId={parts[1] && parts[1] !== "all" ? Number(parts[1]) : undefined} />;
   else if (parts[0] === "web") page = <WebMonitor profiles={profiles} />;
   else if (parts[0] === "memory") page = <SharedMemory profiles={profiles} />;
   else if (parts[0] === "personalities") page = <Personalities />;
   else if (parts[0] === "settings") page = <SettingsPage />;
   else page = <Dashboard profiles={profiles} />;
 
+  // Live browsers get the whole width of the window.
+  const wide = parts[0] === "browsers" || (parts[0] === "agents" && (parts[2] ?? "live") === "live");
   const active = (h: string) => (h === "#/" ? hash === "#/" || hash === "" : hash.startsWith(h));
   return (
     <div className="layout">
@@ -90,7 +92,7 @@ function Shell() {
           Log out
         </a>
       </aside>
-      <main className="main">{page}</main>
+      <main className={`main ${wide ? "wide" : ""}`}>{page}</main>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { addMemory, recall, formatMemory } from "./memory.js";
 import { guardedFetch, htmlToText, webSearch, type WebContext } from "./web.js";
 import { bus } from "./bus.js";
 import { browserAvailable, browserFor } from "./browser.js";
+import { runAbilityTool, type AbilitySession } from "./abilities/index.js";
 
 export interface ToolProfile {
   id: number;
@@ -15,6 +16,7 @@ export interface ToolProfile {
   block_domains: string;
   min_rest_minutes: number;
   max_rest_minutes: number;
+  abilities: string;
 }
 
 export interface ToolContext {
@@ -25,6 +27,8 @@ export interface ToolContext {
   nameOf: (id: number | null) => string;
   /** Called when an agent posts to the chatroom, so mentioned agents can be woken. */
   onChatPost: (messageId: number, content: string) => void;
+  /** Which ability toolbox is open this session. */
+  session: AbilitySession;
 }
 
 export interface ToolOutcome {
@@ -313,8 +317,10 @@ export async function runTool(c: ToolContext, name: string, args: any): Promise<
         rest: { minutes, note: String(args.note ?? "").slice(0, 4000), importance: Number(args.importance) || 5 },
       };
     }
-    default:
-      return { output: `Unknown tool ${name}.` };
+    default: {
+      const out = await runAbilityTool({ db, settings, profile, session: c.session, web: webCtx(c) }, name, args);
+      return { output: out ?? `Unknown tool ${name}.` };
+    }
   }
 }
 

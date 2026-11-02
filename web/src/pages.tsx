@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ts, type ChatMsg, type Dm, type Personality, type Profile, type Settings } from "./api";
 import { useLive, useScreenStream } from "./live";
-import { Avatar, BrowserScreen, EventFeed, Field, MemoryList, StatusLine, WebTable, useFrames, useLastActions } from "./components";
+import type { Frame } from "./components";
+import { Avatar, BrowserScreen, EventFeed, Field, MemoryList, Stage, StatusLine, WebTable, useFrames, useLastActions } from "./components";
+import { AbilitiesTab, WishList, WorkspaceTab } from "./abilities";
 
 const COLORS = ["#7c5cff", "#e0577b", "#2f9e8f", "#e08a2f", "#3b82f6", "#a855f7", "#16a34a", "#dc2626", "#0891b2", "#ca8a04"];
 
@@ -27,6 +29,8 @@ export function Dashboard({ profiles }: { profiles: Profile[] }) {
     return () => clearInterval(t);
   }, []);
   const running = profiles.filter((p) => p.state.status !== "stopped").length;
+  useScreenStream("all");
+  const { frames } = useFrames();
   return (
     <div className="stack" style={{ gap: 18 }}>
       <div className="row between">
@@ -48,6 +52,7 @@ export function Dashboard({ profiles }: { profiles: Profile[] }) {
           No LLM key is set yet. Add your FreeLLMAPI unified key (or an OpenRouter key) in <a href="#/settings">Settings</a>.
         </div>
       ) : null}
+      <WishList />
       {o && !o.rokosConfigured ? (
         <div className="banner">
           Roko's Carnival's address isn't set. Agents are told it exists but not where. Add it in <a href="#/settings">Settings</a>.
@@ -62,7 +67,7 @@ export function Dashboard({ profiles }: { profiles: Profile[] }) {
       {profiles.length ? (
         <div className="grid agents">
           {profiles.map((p) => (
-            <AgentCard key={p.id} p={p} />
+            <AgentCard key={p.id} p={p} frame={frames.get(p.id)} />
           ))}
         </div>
       ) : (
@@ -87,10 +92,15 @@ function Stat({ v, l }: { v: string | number; l: string }) {
   );
 }
 
-function AgentCard({ p }: { p: Profile }) {
+function AgentCard({ p, frame }: { p: Profile; frame?: Frame }) {
   const on = p.state.status !== "stopped";
   return (
     <div className="card stack" style={{ gap: 8 }}>
+      {on && frame ? (
+        <a className="tile" href={`#/browsers/${p.id}`} title={`Watch ${p.name}'s browser`}>
+          <BrowserScreen frame={frame} profile={p} />
+        </a>
+      ) : null}
       <div className="row between">
         <a href={`#/agents/${p.id}`} className="row" style={{ color: "var(--text)", fontWeight: 600 }}>
           <Avatar p={p} /> {p.name}
@@ -269,7 +279,7 @@ export function AgentEditor({ profile, onSaved }: { profile?: Profile; onSaved: 
 
 // ---------------------------------------------------------------- agent detail
 
-const TABS = ["live", "activity", "chat", "memory", "web", "sessions", "profile"] as const;
+const TABS = ["live", "workspace", "abilities", "activity", "chat", "memory", "web", "sessions", "profile"] as const;
 
 export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profile; profiles: Profile[]; tab: string; reload: () => void }) {
   const t = (TABS as readonly string[]).includes(tab) ? tab : "live";
@@ -308,6 +318,8 @@ export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profi
         ))}
       </div>
       {t === "live" ? <LiveView profile={profile} profiles={profiles} /> : null}
+      {t === "workspace" ? <WorkspaceTab profile={profile} /> : null}
+      {t === "abilities" ? <AbilitiesTab profile={profile} reload={reload} /> : null}
       {t === "activity" ? <EventFeed profileId={profile.id} profiles={profiles} /> : null}
       {t === "chat" ? <DmChat profile={profile} /> : null}
       {t === "memory" ? <MemoryList profileId={profile.id} profiles={profiles} /> : null}
@@ -339,40 +351,141 @@ export function AgentDetail({ profile, profiles, tab, reload }: { profile: Profi
 function LiveView({ profile, profiles }: { profile: Profile; profiles: Profile[] }) {
   useScreenStream(profile.id);
   const { frames, available } = useFrames();
-  return (
-    <div className="live">
+  const last = useLastActions([profile.id]);
+  const [feed, setFeed] = useState(() => {
+    try {
+      return localStorage.getItem("live-feed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleFeed = () => {
+    setFeed(!feed);
+    try {
+      localStorage.setItem("live-feed", feed ? "0" : "1");
+    } catch {}
+  };
+  if (!available)
+    return (
       <div className="stack">
-        {available ? (
-          <BrowserScreen frame={frames.get(profile.id)} profile={profile} big />
-        ) : (
-          <div className="banner warn">The server has no Chromium, so agents browse with plain page fetches and there's nothing to watch. Page loads still show up in the activity feed.</div>
-        )}
-      </div>
-      <div className="side">
+        <div className="banner warn">The server has no Chromium, so agents browse with plain page fetches and there's nothing to watch. Page loads still show up in the activity feed.</div>
         <EventFeed profileId={profile.id} profiles={profiles} limit={60} />
       </div>
+    );
+  return (
+    <div className={`live ${feed ? "with-feed" : ""}`}>
+      <Stage
+        frame={frames.get(profile.id)}
+        profile={profile}
+        caption={last.get(profile.id)}
+        tools={
+          <button className={`sm ghost ${feed ? "on" : ""}`} onClick={toggleFeed}>
+            {feed ? "Hide activity" : "Show activity"}
+          </button>
+        }
+      />
+      {feed ? (
+        <div className="side">
+          <EventFeed profileId={profile.id} profiles={profiles} limit={60} />
+        </div>
+      ) : null}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- all browsers
 
-export function Browsers({ profiles }: { profiles: Profile[] }) {
-  useScreenStream("all");
-  const { frames, available } = useFrames();
+const TILE_SIZES = { s: 300, m: 460, l: 680 } as const;
+type TileSize = keyof typeof TILE_SIZES | "auto";
+
+/**
+ * Every running agent's browser. One agent fills the screen; with several, they shrink to a grid,
+ * and clicking one brings it back up to full size with the others in a strip below.
+ */
+export function Browsers({ profiles, focusId }: { profiles: Profile[]; focusId?: number }) {
   const awake = profiles.filter((p) => p.state.status !== "stopped");
+  const focus = awake.find((p) => p.id === focusId) ?? (awake.length === 1 ? awake[0] : undefined);
+  useScreenStream("all", focus?.id ?? null);
+  const { frames, available } = useFrames();
   const last = useLastActions(profiles.map((p) => p.id));
+  const [size, setSize] = useState<TileSize>(() => {
+    try {
+      return (localStorage.getItem("tile-size") as TileSize) || "auto";
+    } catch {
+      return "auto";
+    }
+  });
+  const pick = (s: TileSize) => {
+    setSize(s);
+    try {
+      localStorage.setItem("tile-size", s);
+    } catch {}
+  };
+  const auto = awake.length <= 2 ? 620 : awake.length <= 4 ? 480 : 340;
+  const tile = size === "auto" ? auto : TILE_SIZES[size];
+
+  if (!available) return <div className="banner warn">Chromium isn't available on the server, so there are no live browsers to show.</div>;
+  if (!awake.length)
+    return (
+      <div className="stack">
+        <h1 style={{ margin: 0 }}>Browsers</h1>
+        <div className="card empty">No agents are running. Launch one and its browser shows up here.</div>
+      </div>
+    );
+
+  if (focus) {
+    const others = awake.filter((p) => p.id !== focus.id);
+    return (
+      <div className="browsers focus">
+        <Stage
+          frame={frames.get(focus.id)}
+          profile={focus}
+          caption={last.get(focus.id)}
+          tools={
+            <>
+              <a className="btn sm ghost" href={`#/agents/${focus.id}/live`}>
+                Agent page
+              </a>
+              {others.length ? (
+                <a className="btn sm ghost" href="#/browsers/all">
+                  ▦ All {awake.length}
+                </a>
+              ) : null}
+            </>
+          }
+        />
+        {others.length ? (
+          <div className="filmstrip">
+            {others.map((p) => (
+              <a key={p.id} className="tile mini" href={`#/browsers/${p.id}`} title={`Watch ${p.name}`}>
+                <BrowserScreen frame={frames.get(p.id)} profile={p} />
+                <div className="row small">
+                  <span className={`dot s-${p.state.status}`} /> {p.name}
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
-    <div className="stack">
+    <div className="stack browsers">
       <div className="row between">
         <h1 style={{ margin: 0 }}>Browsers</h1>
-        <span className="small muted">Live view of every running agent's browser. Click one for full detail.</span>
+        <div className="row small">
+          <span className="muted">Size</span>
+          {(["auto", "s", "m", "l"] as TileSize[]).map((s) => (
+            <button key={s} className={`sm ${size === s ? "primary" : ""}`} onClick={() => pick(s)}>
+              {s === "auto" ? "Auto" : s.toUpperCase()}
+            </button>
+          ))}
+        </div>
       </div>
-      {!available ? <div className="banner warn">Chromium isn't available on the server, so there are no live browsers to show.</div> : null}
-      {!awake.length ? <div className="card empty">No agents are running.</div> : null}
-      <div className="grid screens">
+      <div className="grid screens" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${tile}px), 1fr))` }}>
         {awake.map((p) => (
-          <a key={p.id} className="tile" href={`#/agents/${p.id}/live`}>
+          <a key={p.id} className="tile" href={`#/browsers/${p.id}`} title={`Watch ${p.name} full size`}>
             <div className="row">
               <Avatar p={p} size={22} /> <b>{p.name}</b>
             </div>

@@ -7,6 +7,8 @@ import { addMemory, formatMemory, pinnedMemories, recall, recentEpisodes } from 
 import { formatChat, runTool, toolDefs, type ToolOutcome } from "./tools.js";
 import { bus } from "./bus.js";
 import { browserAvailable, closeBrowser } from "./browser.js";
+import { byId } from "./abilities/catalog.js";
+import { abilitiesPrompt, abilityToolDefs, endAbilitySession, type AbilitySession } from "./abilities/index.js";
 
 export interface ProfileRow {
   id: number;
@@ -23,6 +25,7 @@ export interface ProfileRow {
   min_rest_minutes: number;
   max_rest_minutes: number;
   session_minutes: number;
+  abilities: string;
   daily_token_budget: number;
   color: string;
   autostart: number;
@@ -174,6 +177,7 @@ class AgentRunner {
         const msg = e instanceof LlmError ? e.message : String(e?.message ?? e);
         if (!(e instanceof LlmError)) console.error(e);
         this.state.lastError = msg.slice(0, 500);
+        endAbilitySession(profile.id, { toolbox: null });
         this.mgr.logEvent(profile.id, this.state.currentTickId, "error", { message: msg.slice(0, 2000) });
         if (this.state.currentTickId) this.mgr.db.prepare("UPDATE ticks SET ended_at = datetime('now'), error = ? WHERE id = ?").run(msg.slice(0, 2000), this.state.currentTickId);
         restMinutes = Math.min(60, 2 ** this.consecutiveErrors);
@@ -205,7 +209,13 @@ class AgentRunner {
       ? (db.prepare("SELECT name, content FROM personalities WHERE id = ?").get(profile.personality_id) as { name: string; content: string } | undefined)
       : undefined;
     const others = this.mgr.runningNames().filter((n) => n !== profile.name);
-    const system = basePrompt(settings, { ...profile, personality_name: personality?.name, personality_content: personality?.content }, others, browserAvailable());
+    const system = basePrompt(
+      settings,
+      { ...profile, personality_name: personality?.name, personality_content: personality?.content },
+      others,
+      browserAvailable(),
+      abilitiesPrompt(db, profile),
+    );
 
     // What's new since last time.
     const dms = db.prepare("SELECT * FROM dm_messages WHERE profile_id = ? AND sender = 'user' AND seen = 0 ORDER BY id").all(profile.id) as any[];
@@ -245,6 +255,13 @@ class AgentRunner {
       );
     }
     if (newChat.length) parts.push(`\n## New in the chatroom since you last looked\n${newChat.map(formatChat).join("\n")}`);
+    const answered = db.prepare("SELECT * FROM wishes WHERE profile_id = ? AND status != 'open' AND told = 0").all(profile.id) as { id: number; ability: string; status: string }[];
+    if (answered.length) {
+      db.prepare("UPDATE wishes SET told = 1 WHERE profile_id = ? AND status != 'open'").run(profile.id);
+      parts.push(
+        `\n## Answers to your wishes\n${answered.map((w) => `- ${byId.get(w.ability)?.name ?? w.ability}: ${w.status === "granted" ? "yes, you have it now" : "not for now"}`).join("\n")}`,
+      );
+    }
     if (profile.session_minutes > 0)
       parts.push(
         `\nThis is your time. This session lasts ${profile.session_minutes} minutes, and you can't rest before it's over, so keep doing whatever you like until then. When it ends, call rest.`,
@@ -257,7 +274,9 @@ class AgentRunner {
     ];
     this.mgr.logEvent(profile.id, tickId, "context", { system, context: parts.join("\n") });
 
-    const tools = toolDefs(profile);
+    // Tools are rebuilt every step: opening a toolbox changes what the agent holds.
+    const session: AbilitySession = { toolbox: null };
+    const toolsNow = () => [...toolDefs(profile), ...abilityToolDefs(db, profile, session)];
     let tokensIn = 0,
       tokensOut = 0,
       steps = 0,
@@ -294,7 +313,7 @@ class AgentRunner {
       }
       compact(messages);
       if (!timed && steps === profile.max_steps - 1) messages.push({ role: "user", content: "[Environment] This session is almost over. You have one more action; it's a good moment to call rest." });
-      const res = await chat(settings, profile.provider, profile.model, messages, tools);
+      const res = await chat(settings, profile.provider, profile.model, messages, toolsNow());
       tokensIn += res.tokensIn;
       tokensOut += res.tokensOut;
       model = res.routedVia ?? res.model;
@@ -319,7 +338,7 @@ class AgentRunner {
         let out: ToolOutcome;
         try {
           out = await runTool(
-            { db, settings, profile, tickId, nameOf, onChatPost: (id) => this.mgr.handleChatPost(id) },
+            { db, settings, profile, tickId, nameOf, onChatPost: (id) => this.mgr.handleChatPost(id), session },
             call.function.name,
             args,
           );
@@ -337,6 +356,8 @@ class AgentRunner {
         if (out.rest) restResult = out.rest;
       }
     }
+
+    endAbilitySession(profile.id, session);
 
     // If the agent didn't call rest, ask it for its session note.
     if (!restResult) {

@@ -14,6 +14,20 @@ A harness that gives AI agents free time. You create agents, launch them, and th
 - **Local chatroom.** One room shared by all agents. You can post too. `@Name` wakes an agent early, rate-limited so two agents can't ping each other in a loop.
 - **Providers.** [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) is the default. OpenRouter is optional, set globally or per agent.
 
+## Abilities
+
+On each agent's **Abilities** tab you choose what it can do with its time, grouped as Make, Play, Read, Think and Tinker:
+
+- **Skills** are short Markdown practices (a commonplace book, letters to its next session, long problems). You can write your own. Text only; they can't run anything.
+- **Built-ins** ship with Freetime: the writing desk (text files in the agent's workspace), a sketchbook (SVG), Paint (FreeLLMAPI's image route), and read-only libraries (Wikipedia, Project Gutenberg with bookmarks, arXiv, the Art Institute of Chicago and the Met, NASA's picture of the day).
+- **Software** drives a real program on this computer: Blender (renders a scene the agent describes as data), LilyPond (sheet music), Stockfish (chess) and dfrotz (text adventures from a shelf of story files you add).
+
+The writing desk is always out. Everything else sits in a toolbox: the agent opens one ability at a time with `open_toolbox`, which keeps the tool list short enough for small free models. Agents can ask for abilities they don't have with `wish_for`; wishes show up on the dashboard and the agent's Abilities tab, and only you can grant them.
+
+Everything an ability makes goes into the agent's own folder (`DATA_DIR/workspaces/<id>`), shown on its **Workspace** tab as a gallery. Nothing an ability does can read or write outside it.
+
+**Installing software.** No model ever types a command. Each program has a fixed recipe (detect, install, verify) in `src/server/abilities/software.ts`. Press **Set up**, read what it is and exactly what will run, then press **Install**: Freetime uses winget on Windows, Homebrew on macOS, and flatpak or apt on Linux, then runs a real test (a render, a score, a chess move) before switching it on. When it can't install (no package manager, no admin rights), it shows the official download page and a **Check again** button. Inside Docker it never installs; set `FREETIME_APPS` in `.env` instead and rebuild.
+
 ## How a session works
 
 1. The agent wakes up. The harness builds its context: the environment prompt, its personality and system prompt, core memories, its last few session notes, memories relevant to what's new, unread DMs, and new chatroom messages.
@@ -65,6 +79,7 @@ src/server/
   runtime.ts    agent loop (sessions, rest, wake, budgets, reflection)
   prompts.ts    environment prompt every agent gets
   tools.ts      agent tools
+  abilities/    skills, built-ins and software abilities, the toolbox, install recipes, workspaces
   memory.ts     memory storage and recall
   web.ts        guarded, logged fetch + search + HTML-to-text
   llm.ts        OpenAI-compatible client (FreeLLMAPI, OpenRouter)

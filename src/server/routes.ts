@@ -10,6 +10,8 @@ import { postChat } from "./tools.js";
 import { bus, type BusMessage } from "./bus.js";
 import fs from "node:fs";
 import { browserAvailable, latestFrame, screenshotPath } from "./browser.js";
+import { registerAbilityRoutes } from "./abilities/routes.js";
+import { DEFAULT_ABILITIES, parseAbilities } from "./abilities/catalog.js";
 
 const PROFILE_FIELDS = {
   name: "string",
@@ -27,6 +29,7 @@ const PROFILE_FIELDS = {
   session_minutes: "number",
   daily_token_budget: "int",
   color: "string",
+  abilities: "abilities",
 } as const;
 
 class HttpError extends Error {
@@ -58,6 +61,10 @@ function pickProfile(body: any, partial: boolean): Record<string, unknown> {
         break;
       case "nullable-int":
         out[k] = v === null || v === "" || v === undefined ? null : Number(v);
+        break;
+      case "abilities":
+        if (!Array.isArray(v)) throw new HttpError(400, "abilities must be a list");
+        out[k] = JSON.stringify([...new Set(parseAbilities(JSON.stringify(v)))]);
         break;
       case "provider":
         if (v !== "freellmapi" && v !== "openrouter") throw new HttpError(400, "provider must be freellmapi or openrouter");
@@ -201,6 +208,7 @@ export function registerRoutes(app: FastifyInstance, db: DB, mgr: AgentManager) 
   app.post("/api/profiles", async (req) => {
     const f = pickProfile(req.body, false);
     if (!("provider" in f)) f.provider = getSettings(db).defaultProvider;
+    if (!("abilities" in f)) f.abilities = JSON.stringify(DEFAULT_ABILITIES);
     const cols = Object.keys(f);
     try {
       const info = db.prepare(`INSERT INTO profiles (${cols.join(",")}) VALUES (${cols.map((c) => "@" + c).join(",")})`).run(f);
@@ -405,11 +413,14 @@ export function registerRoutes(app: FastifyInstance, db: DB, mgr: AgentManager) 
     return fs.createReadStream(p);
   });
 
+  registerAbilityRoutes(app, db);
+
   // ---- live updates
   app.get("/ws", { websocket: true }, (socket) => {
     // Screen frames are heavy, so each socket says which agents' screens it wants:
     // {"screens": "all"} for the grid (throttled), {"screens": [id]} for one agent, or {"screens": []}.
     let screens: "all" | Set<number> = new Set();
+    let focus: number | null = null;
     const lastFrame = new Map<number, number>();
     const trailing = new Map<number, NodeJS.Timeout>();
     socket.on("message", (raw: Buffer) => {
@@ -417,13 +428,14 @@ export function registerRoutes(app: FastifyInstance, db: DB, mgr: AgentManager) 
         const m = JSON.parse(String(raw));
         if (m.screens === "all") screens = "all";
         else if (Array.isArray(m.screens)) screens = new Set(m.screens.map(Number));
+        focus = m.focus == null ? null : Number(m.focus);
       } catch {}
     });
     const send = (m: BusMessage) => {
       if (socket.readyState !== 1) return;
       if (m.channel === "screen") {
         const id = Number(m.profileId);
-        const focused = screens !== "all" && screens.has(id);
+        const focused = (screens !== "all" && screens.has(id)) || focus === id;
         if (!focused && screens !== "all") return;
         const gap = focused ? 250 : 1200;
         const wait = gap - (Date.now() - (lastFrame.get(id) ?? 0));

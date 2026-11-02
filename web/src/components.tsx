@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, timeAgo, ts, type EventRow, type Memory, type Profile, type WebRequest } from "./api";
 import { useLive } from "./live";
 
@@ -438,6 +438,48 @@ export function useLastActions(profileIds: number[]) {
     if (text) setLast((prev) => new Map(prev).set(m.profileId!, text));
   });
   return last;
+}
+
+/**
+ * One agent's browser as large as the space allows: the frame is letterboxed to fit, the last thing the
+ * agent did runs along the bottom, and a button takes it full screen.
+ */
+export function Stage({ frame, profile, caption, tools }: { frame?: Frame; profile: Profile; caption?: string; tools?: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const on = () => setFull(document.fullscreenElement === ref.current);
+    document.addEventListener("fullscreenchange", on);
+    return () => document.removeEventListener("fullscreenchange", on);
+  }, []);
+  const toggleFull = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void ref.current?.requestFullscreen?.().catch(() => {});
+  };
+  return (
+    <div className="stage" ref={ref}>
+      <div className="stage-bar">
+        <span className={`dot s-${profile.state.status}`} />
+        <b className="stage-name">{profile.name}</b>
+        <span className="mono screen-url" title={frame?.url}>
+          {frame?.url ?? "no page open"}
+        </span>
+        <span className="spacer" />
+        {tools}
+        <button className="sm ghost" onClick={toggleFull} title={full ? "Exit full screen (Esc)" : "Full screen"}>
+          {full ? "⤡ Exit" : "⤢ Full screen"}
+        </button>
+      </div>
+      <div className="stage-view">
+        {frame ? (
+          <img src={`data:image/jpeg;base64,${frame.image}`} alt={`${profile.name}'s browser`} />
+        ) : (
+          <div className="screen-empty">{profile.state.status === "stopped" ? "Stopped" : "The browser opens when the agent first goes online."}</div>
+        )}
+        {caption ? <div className="stage-caption">{caption}</div> : null}
+      </div>
+    </div>
+  );
 }
 
 export function BrowserScreen({ frame, profile, big }: { frame?: Frame; profile: Profile; big?: boolean }) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 export interface LiveMessage {
-  channel: "event" | "status" | "dm" | "chat" | "web" | "memory" | "screen";
+  channel: "event" | "status" | "dm" | "chat" | "web" | "memory" | "screen" | "install" | "wish";
   profileId?: number | null;
   payload: any;
 }
@@ -10,11 +10,12 @@ type Listener = (m: LiveMessage) => void;
 const listeners = new Set<Listener>();
 let socket: WebSocket | null = null;
 let retry = 1000;
-/** Which agents' screens this tab wants streamed. */
+/** Which agents' screens this tab wants streamed, and which one gets the full frame rate. */
 let screens: "all" | number[] = [];
+let focus: number | null = null;
 
 function sendScreens() {
-  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ screens }));
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ screens, focus }));
 }
 
 function connect() {
@@ -49,14 +50,19 @@ export function useLive(fn: Listener) {
   }, []);
 }
 
-/** Stream screens for the life of a component: one agent's, or every agent's (lower frame rate). */
-export function useScreenStream(want: "all" | number) {
+/**
+ * Stream screens for the life of a component: one agent's, or every agent's (lower frame rate).
+ * With "all", `focused` names the one big screen that should still get the full frame rate.
+ */
+export function useScreenStream(want: "all" | number, focused: number | null = null) {
   useEffect(() => {
     screens = want === "all" ? "all" : [want];
+    focus = want === "all" ? focused : want;
     sendScreens();
     return () => {
       screens = [];
+      focus = null;
       sendScreens();
     };
-  }, [want]);
+  }, [want, focused]);
 }
